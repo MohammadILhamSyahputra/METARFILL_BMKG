@@ -58,8 +58,19 @@ class RiwayatApp(QMainWindow):
         user_layout = QHBoxLayout()
         user_name = QLabel("Zenita Endriani")
         user_name.setFont(QFont("Arial", 11, QFont.Bold))
+        
+        user_icon = QLabel()
+        pixmap_user = QPixmap(os.path.join(current_dir, "user-icon.png")) 
+        if not pixmap_user.isNull():
+            user_icon.setPixmap(pixmap_user.scaledToHeight(35, Qt.TransformationMode.SmoothTransformation))
+        else:
+            user_icon.setText("👤")
+            user_icon.setStyleSheet("font-size: 20px; color: white; background-color: transparent;")
+            
         user_layout.addWidget(user_name)
+        user_layout.addWidget(user_icon)
         header_layout.addLayout(user_layout)
+
         main_layout.addWidget(header)
 
         # ==========================================
@@ -98,9 +109,14 @@ class RiwayatApp(QMainWindow):
                 btn.setChecked(True)
 
         sidebar_layout.addStretch()
-        logout_btn = QPushButton("LOGOUT")
-        sidebar_layout.addWidget(logout_btn)
+
+        self.logout_btn = QPushButton("LOGOUT")
+        self.logout_btn.setObjectName("LogoutBtn")
+        
+        sidebar_layout.addWidget(self.logout_btn)
         body_layout.addWidget(sidebar)
+        
+        self.logout_btn.clicked.connect(self.proses_logout)
 
         # --- CONTENT AREA ---
         content_container = QWidget()
@@ -124,7 +140,7 @@ class RiwayatApp(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(8) # Diubah dari 4 menjadi 8
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "Tinggi Awan", "Temp", "Embun", "Status Data"
+            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "FEW", "Temp", "Embun", "Status Data"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
@@ -171,11 +187,12 @@ class RiwayatApp(QMainWindow):
         if button_id == 0:
             self.dashboard()
 
-    def dashboard(self):
-        from form_dashboard import DashboardApp
-        self.dashboard_window = DashboardApp()
-        self.dashboard_window.show()
-        self.close()
+    def proses_logout(self):
+        from login_page import LoginPage
+        
+        self.login_window = LoginPage()
+        self.login_window.show()
+        self.close() 
 
     # ========================================================
     # 4. FUNGSI LOAD DATA DARI SQLITE (DENGAN 8 KOLOM)

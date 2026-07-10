@@ -135,10 +135,14 @@ class DashboardApp(QMainWindow):
 
         sidebar_layout.addStretch()
 
-        logout_btn = QPushButton("LOGOUT")
-        logout_btn.setObjectName("LogoutBtn")
-        sidebar_layout.addWidget(logout_btn)
+        self.logout_btn = QPushButton("LOGOUT")
+        self.logout_btn.setObjectName("LogoutBtn")
+        
+        sidebar_layout.addWidget(self.logout_btn)
         body_layout.addWidget(sidebar)
+
+        # Hubungkan klik tombol ke fungsi logout yang telah dibuat
+        self.logout_btn.clicked.connect(self.proses_logout)
 
         # --- DASHBOARD CONTENT MAIN AREA ---
         content_container = QWidget()
@@ -288,6 +292,13 @@ class DashboardApp(QMainWindow):
         self.riwayat_window = RiwayatApp()
         self.riwayat_window.show()
         self.close()
+
+    def proses_logout(self):
+        from login_page import LoginPage
+        
+        self.login_window = LoginPage()
+        self.login_window.show()
+        self.close() # Menutup halaman Riwayat
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
