@@ -39,7 +39,7 @@ class DashboardApp(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(20, 10, 20, 10)
 
-        # Logo BMKG dengan Deteksi Path Absolut (Anti-Bulat Biru)
+        # Logo BMKG dengan Deteksi Path Absolut
         logo_title_layout = QHBoxLayout()
         logo_label = QLabel()
         
@@ -88,7 +88,7 @@ class DashboardApp(QMainWindow):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # --- SIDEBAR (Serasi dengan Form Input) ---
+        # --- SIDEBAR ---
         sidebar = QWidget()
         sidebar.setFixedWidth(220)
         sidebar.setStyleSheet("""
@@ -125,10 +125,10 @@ class DashboardApp(QMainWindow):
         self.menu_group.setExclusive(True)
 
         menu_items = ["Dashboard", "Riwayat METAR", "Perbarui Sesi Login"]
-        for item in menu_items:
+        for idx, item in enumerate(menu_items):
             btn = QPushButton(item)
             btn.setCheckable(True)
-            self.menu_group.addButton(btn)
+            self.menu_group.addButton(btn, idx) # ID terdaftar aman (0, 1, 2)
             sidebar_layout.addWidget(btn)
             if item == "Dashboard":
                 btn.setChecked(True)
@@ -146,19 +146,15 @@ class DashboardApp(QMainWindow):
         content_layout.setContentsMargins(30, 20, 30, 20)
         content_layout.setSpacing(20)
 
-        # Judul Utama Dashboard
         dashboard_title = QLabel("Dashboard Observer")
         dashboard_title.setFont(QFont("Arial", 16, QFont.Bold))
         dashboard_title.setStyleSheet("color: #000000;")
         content_layout.addWidget(dashboard_title)
 
-        # ==========================================
-        # 3. CARD CARDS INFO SECTION (Top 3 Boxes)
-        # ==========================================
+        # --- CARD CARDS INFO SECTION ---
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
-        # Card 1: Data Terakhir (Hijau)
         card_terakhir = QFrame()
         card_terakhir.setStyleSheet("background-color: #5B9E63; border-radius: 12px; border: none;")
         layout_c1 = QVBoxLayout(card_terakhir)
@@ -170,7 +166,6 @@ class DashboardApp(QMainWindow):
         layout_c1.addWidget(lbl_c1_title)
         layout_c1.addWidget(lbl_c1_val)
 
-        # Card 2: Status Otomasi (Cokelat Emas)
         card_otomasi = QFrame()
         card_otomasi.setStyleSheet("background-color: #B58D47; border-radius: 12px; border: none;")
         layout_c2 = QVBoxLayout(card_otomasi)
@@ -182,7 +177,6 @@ class DashboardApp(QMainWindow):
         layout_c2.addWidget(lbl_c2_title)
         layout_c2.addWidget(lbl_c2_val)
 
-        # Card 3: Jumlah Data (Biru Muda Pastel)
         card_jumlah = QFrame()
         card_jumlah.setStyleSheet("background-color: #79A9BF; border-radius: 12px; border: none;")
         layout_c3 = QVBoxLayout(card_jumlah)
@@ -199,10 +193,7 @@ class DashboardApp(QMainWindow):
         cards_layout.addWidget(card_jumlah)
         content_layout.addLayout(cards_layout)
 
-        # ==========================================
-        # 4. TABEL DATA METAR SECTION
-        # ==========================================
-        # Header Tabel + Tombol Ambil Data Baru
+        # --- TABEL DATA METAR SECTION ---
         table_header_layout = QHBoxLayout()
         table_title = QLabel("Tabel Data Metar")
         table_title.setFont(QFont("Arial", 11, QFont.Bold))
@@ -227,36 +218,29 @@ class DashboardApp(QMainWindow):
         table_header_layout.addWidget(btn_ambil_data)
         content_layout.addLayout(table_header_layout)
 
-        # Konstruksi QTableWidget
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(8)
         self.table_widget.setHorizontalHeaderLabels([
             "Waktu", "Arah Angin", "Kecepatan", "Visibility", "tinggi awan", "Temp", "Embun", "Aksi"
         ])
         
-        # MENONAKTIFKAN SELEKSI AGAR TIDAK ADA EFEK SAAT DITEKAN
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
         self.table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_widget.setFocusPolicy(Qt.NoFocus)
-        # Mengaktifkan warna baris selang-seling (Opsional, jika ingin polos putih semua set ke False)
         self.table_widget.setAlternatingRowColors(True)
         
-        #STYLING TABEL AGAR TIDAK ADA WARNA BIRU SAAT SELEKSI
         self.table_widget.setStyleSheet("""
             QTableWidget {
-                background-color: #FFFFFF; /* Warna dasar baris ganjil (Putih) */
+                background-color: #FFFFFF;
                 gridline-color: #E0E0E0;
                 border: 1px solid #D0D0D0;
                 border-radius: 4px;
                 selection-background-color: transparent;
                 selection-color: #000000;
             }
-            
-            /* PERBAIKAN UTAMA: Cara resmi Qt untuk mengatur baris selang-seling */
             QTableWidget::item:alternate {
-                background-color: #F9F9F9; /* Warna baris genap (Abu-abu sangat tipis) */
+                background-color: #F9F9F9;
             }
-            
             QTableWidget::item {
                 color: #000000; 
                 font-weight: normal;
@@ -278,43 +262,11 @@ class DashboardApp(QMainWindow):
             }
         """)    
             
-        # Mengatur agar lebar kolom menyesuaikan porsi layar dengan rapi
         self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_widget.verticalHeader().setVisible(False)
-
-        self.table_widget.setRowCount(3)  
+        self.table_widget.setRowCount(0)  
 
         content_layout.addWidget(self.table_widget)
-            
-        # PERBAIKAN TOMBOL: Polos tanpa background biru di sel, hanya tombol yang berwarna
-        for row_idx in range(3):
-            # Buat tombol "Proses & Preview" baru untuk baris aktif (row_idx)
-            btn_proses = QPushButton("Proses & Preview")
-            btn_proses.setStyleSheet("""
-                QPushButton {
-                    background-color: #0070C0; /* Background Biru */
-                    color: white; /* Tulisan Putih */
-                    font-weight: bold;
-                    font-size: 11px;
-                    border: none;
-                    border-radius: 4px;
-                    margin: 2px 10px;
-                    padding: 6px;
-                }
-                QPushButton:hover { background-color: #005691; }
-            """)
-            
-            # Wadah transparan agar efek seleksi biru bawaan Qt tidak muncul
-            container_widget = QWidget()
-            container_widget.setStyleSheet("background-color: transparent; border: none;")
-            container_layout = QHBoxLayout(container_widget)
-            container_layout.setContentsMargins(0, 0, 0, 0)
-            container_layout.addWidget(btn_proses)
-            
-            # Pasang container tombol ke kolom nomor 7 (Aksi) pada baris ke-row_idx
-            self.table_widget.setCellWidget(row_idx, 7, container_widget)
-        
-        content_layout.addWidget(self.table_widget)        
         body_layout.addWidget(content_container)
         main_layout.addLayout(body_layout)
 
@@ -322,6 +274,20 @@ class DashboardApp(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+        # PERBAIKAN UTAMA: Mengubah dari .buttonClicked ke .idClicked agar mengirimkan parameter ID int
+        self.menu_group.idClicked.connect(self.handle_menu_click)
+
+    def handle_menu_click(self, button_id):
+        # Jika Riwayat METAR (Index 1) diklik
+        if button_id == 1:  
+            self.buka_riwayat()
+
+    def buka_riwayat(self):
+        from form_riwayat_data import RiwayatApp
+        self.riwayat_window = RiwayatApp()
+        self.riwayat_window.show()
+        self.close()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
