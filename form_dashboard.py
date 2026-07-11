@@ -9,8 +9,12 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
 
 class DashboardApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, user_data=None):
         super().__init__()
+        # Data user yang sedang login (dikirim dari LoginPage). Diberi nilai
+        # default supaya file ini tetap bisa dijalankan mandiri untuk testing.
+        self.user_data = user_data or {"id_user": None, "nama": "Zenita Endriani", "role": "Observer"}
+
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri - Dashboard")
         self.resize(1100, 700)
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
@@ -64,7 +68,7 @@ class DashboardApp(QMainWindow):
 
         # User Profile
         user_layout = QHBoxLayout()
-        user_name = QLabel("Zenita Endriani")
+        user_name = QLabel(self.user_data.get("nama", "Observer"))
         user_name.setFont(QFont("Arial", 11, QFont.Bold))
         
         user_icon = QLabel()

@@ -1,8 +1,15 @@
 import sys
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QLineEdit, QPushButton, QFrame, QSpacerItem, QSizePolicy)
+import os
+import sqlite3
+
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+                             QLabel, QLineEdit, QPushButton, QFrame, QSpacerItem, QSizePolicy,
+                             QMessageBox)
 from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtCore import Qt
+
+from auth_utils import hash_password, get_db_path
+
 
 class LoginPage(QWidget):
     def __init__(self):
@@ -12,7 +19,7 @@ class LoginPage(QWidget):
         self.setWindowTitle("METARFill - Login Page")
         self.setFixedSize(900, 600)
         self.setObjectName("main_window")
-        
+
         # Background warna abu-abu muda/putih sesuai gambar
         self.setStyleSheet("""
             #main_window {
@@ -35,21 +42,21 @@ class LoginPage(QWidget):
         self.header_layout = QHBoxLayout()
         self.logo_bmkg = QLabel()
         # Ganti 'bmkg_logo.png' dengan path file logomu
-        # self.logo_bmkg.setPixmap(QPixmap("bmkg_logo.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.logo_bmkg.setText("LOGO\nBMKG") # Placeholder jika gambar tidak ada
+        self.logo_bmkg.setPixmap(QPixmap("logo-bmkg.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        #self.logo_bmkg.setText("LOGO\nBMKG") # Placeholder
         self.logo_bmkg.setFixedSize(60, 60)
 
         self.title_label = QLabel("STASIUN METEOROLOGI KELAS III\nDHOHO KEDIRI")
         self.title_label.setFont(QFont("Arial", 12, QFont.Bold))
-        
+
         self.header_layout.addWidget(self.logo_bmkg)
         self.header_layout.addWidget(self.title_label)
         self.header_layout.addStretch() # Mendorong ke kiri
-        
+
         # 2. METARFill Logo (Center)
         self.brand_layout = QVBoxLayout()
         self.brand_layout.setAlignment(Qt.AlignCenter)
-        
+
         self.logo_metar = QLabel()
         # self.logo_metar.setPixmap(QPixmap("metarfill_logo.png").scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.logo_metar.setText("[ LOGO METARFill ]") # Placeholder
@@ -117,8 +124,11 @@ class LoginPage(QWidget):
         pass_label.setFont(QFont("Arial", 12))
         self.pass_input = QLineEdit()
         self.pass_input.setEchoMode(QLineEdit.Password)
+        # Tekan Enter di kolom password langsung memicu login
+        self.pass_input.returnPressed.connect(lambda: self.login_btn.click())
 
         self.login_btn = QPushButton("LOGIN")
+        self.login_btn.clicked.connect(self.handle_login)
 
         # Menambah widget ke layout card
         card_layout.addWidget(login_title)
@@ -134,6 +144,64 @@ class LoginPage(QWidget):
         # Gabungkan semua ke main layout
         self.main_layout.addLayout(self.left_container, 60)
         self.main_layout.addWidget(self.login_card, 40)
+
+        # Pastikan database & tabel sudah tersedia sebelum user login
+        self._ensure_database_ready()
+
+    def _ensure_database_ready(self):
+        """Membuat database & tabel otomatis jika file database belum ada,
+        supaya aplikasi tetap bisa dipakai walau setup_database.py belum
+        dijalankan manual."""
+        if not os.path.exists(get_db_path()):
+            from setup_database import create_database
+            create_database()
+
+    def handle_login(self):
+        username = self.user_input.text().strip()
+        password = self.pass_input.text().strip()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Peringatan", "Username dan password wajib diisi!")
+            return
+
+        try:
+            conn = sqlite3.connect(get_db_path())
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id_user, nama, role
+                FROM Users
+                WHERE nama = ? AND password = ?
+                """,
+                (username, hash_password(password)),
+            )
+            user = cursor.fetchone()
+            conn.close()
+        except sqlite3.Error as e:
+            QMessageBox.critical(self, "Kesalahan Database", f"Gagal terhubung ke database:\n{e}")
+            return
+
+        if user is None:
+            QMessageBox.warning(self, "Login Gagal", "Username atau password salah!")
+            return
+
+        id_user, nama, role = user
+        user_data = {"id_user": id_user, "nama": nama, "role": role}
+        self.buka_halaman_sesuai_role(user_data)
+
+    def buka_halaman_sesuai_role(self, user_data):
+        role = (user_data.get("role") or "").strip().lower()
+
+        if role == "admin":
+            from admin_page import AdminApp
+            self.next_window = AdminApp(user_data=user_data)
+        else:
+            from form_dashboard import DashboardApp
+            self.next_window = DashboardApp(user_data=user_data)
+
+        self.next_window.show()
+        self.close()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
