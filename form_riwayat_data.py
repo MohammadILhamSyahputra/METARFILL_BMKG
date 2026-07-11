@@ -140,7 +140,7 @@ class RiwayatApp(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(8) # Diubah dari 4 menjadi 8
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "FEW", "Temp", "Embun", "Status Data"
+            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "Tinggi Awan", "Temp", "Embun", "Status Data"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
