@@ -3,10 +3,13 @@ import os
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QPushButton, QFrame, QGridLayout, QTableWidget, 
-    QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView
+    QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView,
+    QMessageBox
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
+
+from session_worker import SessionUpdateWorker
 
 class DashboardApp(QMainWindow):
     def __init__(self, user_data=None):
@@ -290,10 +293,43 @@ class DashboardApp(QMainWindow):
         # Jika Riwayat METAR (Index 1) diklik
         if button_id == 1:  
             self.buka_riwayat()
+        # Jika Perbarui Sesi Login (Index 2) diklik
+        elif button_id == 2:
+            self.perbarui_sesi_login()
+
+    def perbarui_sesi_login(self):
+        self.menu_group.button(0).setChecked(True)
+
+        # Menggunakan objek QMessageBox kustom agar font hitam tegas
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Perbarui Sesi Login")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText("Browser akan terbuka untuk login BMKGSatu.\n\n"
+                    "Silakan login secara manual, lalu klik tombol 'Resume' atau 'F8' pada "
+                    "jendela Playwright Inspector agar sesi login tersimpan.")
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
+
+        self.session_worker = SessionUpdateWorker()
+        self.session_worker.selesai.connect(self.on_sesi_login_selesai)
+        self.session_worker.start()
+
+    def on_sesi_login_selesai(self, sukses, pesan):
+        msg = QMessageBox(self)
+        if sukses:
+            msg.setWindowTitle("Berhasil")
+            msg.setIcon(QMessageBox.Information)
+        else:
+            msg.setWindowTitle("Gagal")
+            msg.setIcon(QMessageBox.Critical)
+            
+        msg.setText(pesan)
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
 
     def buka_riwayat(self):
         from form_riwayat_data import RiwayatApp
-        self.riwayat_window = RiwayatApp()
+        self.riwayat_window = RiwayatApp(user_data=self.user_data)
         self.riwayat_window.show()
         self.close()
 

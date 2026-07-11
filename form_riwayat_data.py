@@ -4,10 +4,12 @@ from PySide6 import QtWidgets
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QPushButton, QFrame, QTableWidget, QTableWidgetItem, 
-    QHeaderView, QButtonGroup, QAbstractItemView, QLineEdit
+    QHeaderView, QButtonGroup, QAbstractItemView, QLineEdit, QMessageBox
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
+
+from session_worker import SessionUpdateWorker
 
 class RiwayatApp(QMainWindow):
     def __init__(self, user_data=None):
@@ -103,13 +105,13 @@ class RiwayatApp(QMainWindow):
         self.menu_group = QButtonGroup(self)
         self.menu_group.setExclusive(True)
 
-        menu_items = ["Dashboard", "Riwayat Pengisian", "Perbarui Sesi Login"]
+        menu_items = ["Dashboard", "Riwayat METAR", "Perbarui Sesi Login"]
         for idx, item in enumerate(menu_items):
             btn = QPushButton(item)
             btn.setCheckable(True)
             self.menu_group.addButton(btn, idx)
             sidebar_layout.addWidget(btn)
-            if item == "Riwayat Pengisian":
+            if item == "Riwayat METAR":
                 btn.setChecked(True)
 
         sidebar_layout.addStretch()
@@ -260,10 +262,55 @@ class RiwayatApp(QMainWindow):
     def handle_menu_click(self, button_id):
         if button_id == 0:
             self.dashboard()
+        # Jika Perbarui Sesi Login (Index 2) diklik
+        elif button_id == 2:
+            self.perbarui_sesi_login()
+
+    def perbarui_sesi_login(self):
+        # Ambil objek pengirim sinyal
+        sender_obj = self.sender()
+        
+        if sender_obj is not None:
+            from PySide6.QtWidgets import QButtonGroup, QPushButton
+            # Jika pengirimnya adalah QButtonGroup, ambil tombol aktif di dalamnya
+            if isinstance(sender_obj, QButtonGroup):
+                active_btn = sender_obj.checkedButton()
+                if active_btn is not None:
+                    active_btn.setChecked(False)
+            # Jika pengirimnya langsung QPushButton
+            elif isinstance(sender_obj, QPushButton):
+                sender_obj.setChecked(False)
+
+        # Membuat popup dengan teks hitam tegas
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Perbarui Sesi Login")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText("Browser akan terbuka untuk login BMKGSatu.\n\n"
+                    "Silakan login secara manual, lalu klik tombol 'Resume' pada "
+                    "jendela Playwright Inspector agar sesi login tersimpan.")
+        msg.setStyleSheet("QLabel { color: black; } QPushButton { color: black; }")
+        msg.exec()
+
+        self.session_worker = SessionUpdateWorker()
+        self.session_worker.selesai.connect(self.on_sesi_login_selesai)
+        self.session_worker.start()
+
+    def on_sesi_login_selesai(self, sukses, pesan):
+        msg = QMessageBox(self)
+        if sukses:
+            msg.setWindowTitle("Berhasil")
+            msg.setIcon(QMessageBox.Information)
+        else:
+            msg.setWindowTitle("Gagal")
+            msg.setIcon(QMessageBox.Critical)
+            
+        msg.setText(pesan)
+        msg.setStyleSheet("QLabel { color: black; } QPushButton { color: black; }")
+        msg.exec()
 
     def dashboard(self):
         from form_dashboard import DashboardApp
-        self.dashboard_window = DashboardApp()
+        self.dashboard_window = DashboardApp(user_data=self.user_data)
         self.dashboard_window.show()
         self.close()
 

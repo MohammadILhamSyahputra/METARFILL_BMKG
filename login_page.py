@@ -4,7 +4,7 @@ import sqlite3
 
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QFrame, QSpacerItem, QSizePolicy,
-                             QMessageBox)
+                             QMessageBox, QCompleter)  # Tambah QCompleter di sini
 from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtCore import Qt
 
@@ -21,6 +21,7 @@ class LoginPage(QWidget):
         self.setObjectName("main_window")
 
         # Background warna abu-abu muda/putih sesuai gambar
+        # Ditambahkan styling QMessageBox agar warna teks notifikasi popup menjadi hitam tegas
         self.setStyleSheet("""
             #main_window {
                 background-color: #f5f9f9;
@@ -28,6 +29,15 @@ class LoginPage(QWidget):
             QLabel {
                 color: black;
                 font-family: 'Segoe UI', Arial;
+            }
+            QMessageBox QLabel {
+                color: black;
+            }
+            QMessageBox QPushButton {
+                color: black;
+                background-color: #E0E0E0;
+                padding: 5px 15px;
+                border-radius: 4px;
             }
         """)
 
@@ -39,129 +49,163 @@ class LoginPage(QWidget):
         self.left_container = QVBoxLayout()
 
         # 1. Header BMKG (Top Left)
-        self.header_layout = QHBoxLayout()
-        self.logo_bmkg = QLabel()
-        # Ganti 'bmkg_logo.png' dengan path file logomu
-        self.logo_bmkg.setPixmap(QPixmap("logo-bmkg.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        #self.logo_bmkg.setText("LOGO\nBMKG") # Placeholder
-        self.logo_bmkg.setFixedSize(60, 60)
+        self.header_bmkg_layout = QHBoxLayout()
+        
+        self.logo_label = QLabel()
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(current_dir,"logo-bmkg.png")
+        
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path).scaled(50, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.logo_label.setPixmap(pixmap)
+        else:
+            self.logo_label.setText("[Logo]")
+            self.logo_label.setStyleSheet("font-weight: bold; color: #0070C0;")
 
-        self.title_label = QLabel("STASIUN METEOROLOGI KELAS III\nDHOHO KEDIRI")
-        self.title_label.setFont(QFont("Arial", 12, QFont.Bold))
+        self.text_header_layout = QVBoxLayout()
+        self.label_main_title = QLabel("BADAN METEOROLOGI, KLIMATOLOGI, DAN GEOFISIKA")
+        self.label_main_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self.label_main_title.setStyleSheet("color: #0070C0;")
+        
+        self.label_sub_title = QLabel("STASIUN METEOROLOGI KELAS III DHOHO KEDIRI")
+        self.label_sub_title.setFont(QFont("Segoe UI", 8))
+        self.label_sub_title.setStyleSheet("color: #555555;")
+        
+        self.text_header_layout.addWidget(self.label_main_title)
+        self.text_header_layout.addWidget(self.label_sub_title)
+        self.text_header_layout.addStretch()
 
-        self.header_layout.addWidget(self.logo_bmkg)
-        self.header_layout.addWidget(self.title_label)
-        self.header_layout.addStretch() # Mendorong ke kiri
+        self.header_bmkg_layout.addWidget(self.logo_label)
+        self.header_bmkg_layout.addLayout(self.text_header_layout)
+        self.left_container.addLayout(self.header_bmkg_layout)
 
-        # 2. METARFill Logo (Center)
-        self.brand_layout = QVBoxLayout()
-        self.brand_layout.setAlignment(Qt.AlignCenter)
+        self.left_container.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        self.logo_metar = QLabel()
-        # self.logo_metar.setPixmap(QPixmap("metarfill_logo.png").scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.logo_metar.setText("[ LOGO METARFill ]") # Placeholder
-        self.logo_metar.setAlignment(Qt.AlignCenter)
-        self.logo_metar.setFixedSize(300, 200)
-        self.logo_metar.setStyleSheet("font-size: 20px; color: #1e6aa5; border: 1px dashed gray;")
+        # 2. Gambar Ilustrasi Utama (Center Left)
+        self.illustration_label = QLabel()
+        ill_path = os.path.join(current_dir, "assets", "login_illustration.png")
+        if os.path.exists(ill_path):
+            pixmap_ill = QPixmap(ill_path).scaled(380, 280, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.illustration_label.setPixmap(pixmap_ill)
+        else:
+            self.illustration_label.setStyleSheet("background-color: #E0EBF5; border-radius: 10px;")
+            self.illustration_label.setFixedSize(380, 250)
+            self.illustration_label.setText("METARFill Automation System")
+            self.illustration_label.setAlignment(Qt.AlignCenter)
+            self.illustration_label.setFont(QFont("Segoe UI", 12, QFont.Bold))
+            
+        self.illustration_label.setAlignment(Qt.AlignCenter)
+        self.left_container.addWidget(self.illustration_label)
+        
+        self.left_container.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        self.tagline = QLabel("Sistem Otomatisasi Pengisian METAR\nTerintegrasi")
-        self.tagline.setAlignment(Qt.AlignCenter)
-        self.tagline.setFont(QFont("Arial", 10, QFont.Bold))
-
-        self.brand_layout.addWidget(self.logo_metar)
-        self.brand_layout.addWidget(self.tagline)
-
-        self.left_container.addLayout(self.header_layout)
-        self.left_container.addStretch()
-        self.left_container.addLayout(self.brand_layout)
-        self.left_container.addStretch()
-
-        # ================= SISI KANAN (KOTAK LOGIN) =================
-        self.login_card = QFrame()
-        self.login_card.setFixedSize(350, 450)
-        self.login_card.setStyleSheet("""
+        # ================= SISI KANAN (FORM LOGIN CARD) =================
+        self.right_frame = QFrame()
+        self.right_frame.setFixedWidth(380)
+        self.right_frame.setStyleSheet("""
             QFrame {
-                background-color: #d3d3d3;
-                border-radius: 10px;
+                background-color: white;
+                border-radius: 15px;
             }
             QLineEdit {
-                background-color: white;
-                border: 1px solid #a0a0a0;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 14px;
+                border: 1px solid #CCCCCC;
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 11pt;
                 color: black;
+                background-color: #FAFAFA;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0070C0;
+                background-color: white;
             }
             QPushButton {
-                background-color: #0000cd;
+                background-color: #0070C0;
                 color: white;
-                border-radius: 5px;
-                padding: 10px;
-                font-size: 16px;
+                border-radius: 6px;
+                padding: 12px;
+                font-size: 11pt;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #00008b;
-            }
-            QLabel {
-                background: transparent;
+                background-color: #005A9E;
             }
         """)
 
-        card_layout = QVBoxLayout(self.login_card)
-        card_layout.setContentsMargins(30, 40, 30, 40)
-        card_layout.setSpacing(15)
+        self.form_layout = QVBoxLayout(self.right_frame)
+        self.form_layout.setContentsMargins(30, 40, 30, 40)
+        self.form_layout.setSpacing(15)
 
-        # Widget di dalam Card
-        login_title = QLabel("Login")
-        login_title.setFont(QFont("Arial", 22, QFont.Bold))
+        # Welcome Text
+        self.label_welcome = QLabel("Selamat Datang")
+        self.label_welcome.setFont(QFont("Segoe UI", 20, QFont.Bold))
+        self.label_welcome.setStyleSheet("color: black;")
+        
+        self.label_instruction = QLabel("Silakan login menggunakan akun personil stasiun.")
+        self.label_instruction.setFont(QFont("Segoe UI", 10))
+        self.label_instruction.setStyleSheet("color: #777777;")
+        
+        self.form_layout.addWidget(self.label_welcome)
+        self.form_layout.addWidget(self.label_instruction)
+        self.form_layout.addSpacerItem(QSpacerItem(20, 15, QSizePolicy.Minimum, QSizePolicy.Fixed))
 
-        user_label = QLabel("Username")
-        user_label.setFont(QFont("Arial", 12))
-        self.user_input = QLineEdit()
+        # Input Username
+        self.form_layout.addWidget(QLabel("Nama Lengkap"))
+        self.input_username = QLineEdit()
+        self.input_username.setPlaceholderText("Masukkan Nama Lengkap Anda")
+        self.form_layout.addWidget(self.input_username)
 
-        pass_label = QLabel("Password")
-        pass_label.setFont(QFont("Arial", 12))
-        self.pass_input = QLineEdit()
-        self.pass_input.setEchoMode(QLineEdit.Password)
-        # Tekan Enter di kolom password langsung memicu login
-        self.pass_input.returnPressed.connect(lambda: self.login_btn.click())
+        # =========================================================
+        # PROSES PEMASANGAN AUTOCOMPLETE TEXT (AMBIL DARI DATABASE)
+        # =========================================================
+        daftar_nama = self.ambil_daftar_nama_dari_db()
+        completer = QCompleter(daftar_nama, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.input_username.setCompleter(completer)
+        # =========================================================
 
-        self.login_btn = QPushButton("LOGIN")
-        self.login_btn.clicked.connect(self.handle_login)
+        # Input Password
+        self.form_layout.addWidget(QLabel("Password"))
+        self.input_password = QLineEdit()
+        self.input_password.setPlaceholderText("Masukkan Password")
+        self.input_password.setEchoMode(QLineEdit.Password)
+        self.form_layout.addWidget(self.input_password)
 
-        # Menambah widget ke layout card
-        card_layout.addWidget(login_title)
-        card_layout.addSpacing(10)
-        card_layout.addWidget(user_label)
-        card_layout.addWidget(self.user_input)
-        card_layout.addWidget(pass_label)
-        card_layout.addWidget(self.pass_input)
-        card_layout.addSpacing(20)
-        card_layout.addWidget(self.login_btn)
-        card_layout.addStretch()
+        self.form_layout.addSpacerItem(QSpacerItem(20, 15, QSizePolicy.Minimum, QSizePolicy.Fixed))
 
-        # Gabungkan semua ke main layout
-        self.main_layout.addLayout(self.left_container, 60)
-        self.main_layout.addWidget(self.login_card, 40)
+        # Sign In Button
+        self.btn_login = QPushButton("Sign In")
+        self.btn_login.setCursor(Qt.PointingHandCursor)
+        self.btn_login.clicked.connect(self.proses_login)
+        self.form_layout.addWidget(self.btn_login)
 
-        # Pastikan database & tabel sudah tersedia sebelum user login
-        self._ensure_database_ready()
+        # Susun ke layout utama horizontal
+        self.main_layout.addLayout(self.left_container, stretch=1)
+        self.main_layout.addWidget(self.right_frame, stretch=0)
 
-    def _ensure_database_ready(self):
-        """Membuat database & tabel otomatis jika file database belum ada,
-        supaya aplikasi tetap bisa dipakai walau setup_database.py belum
-        dijalankan manual."""
-        if not os.path.exists(get_db_path()):
-            from setup_database import create_database
-            create_database()
+    def ambil_daftar_nama_dari_db(self):
+        """Mengambil daftar nama personil dari SQLite untuk Autocomplete"""
+        nama_list = []
+        try:
+            conn = sqlite3.connect(get_db_path())
+            cursor = conn.cursor()
+            cursor.execute("SELECT nama FROM Users")
+            rows = cursor.fetchall()
+            for row in rows:
+                if row[0]:
+                    nama_list.append(row[0])
+            conn.close()
+        except Exception as e:
+            print(f"Gagal memuat data autocomplete: {e}")
+        return nama_list
 
-    def handle_login(self):
-        username = self.user_input.text().strip()
-        password = self.pass_input.text().strip()
+    def proses_login(self):
+        username = self.input_username.text().strip()
+        password = self.input_password.text().strip()
 
         if not username or not password:
-            QMessageBox.warning(self, "Peringatan", "Username dan password wajib diisi!")
+            QMessageBox.warning(self, "Peringatan", "Nama lengkap dan password wajib diisi!")
             return
 
         try:

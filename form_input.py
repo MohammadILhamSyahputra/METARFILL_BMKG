@@ -3,10 +3,12 @@ import os
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QFrame, QGridLayout, QSpacerItem, 
-    QSizePolicy, QButtonGroup, QCheckBox, QComboBox, QScrollArea
+    QSizePolicy, QButtonGroup, QCheckBox, QComboBox, QScrollArea, QMessageBox
 )
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QFont, QIcon
+
+from session_worker import SessionUpdateWorker
 
 class MetarApp(QMainWindow):
     def __init__(self):
@@ -136,6 +138,8 @@ class MetarApp(QMainWindow):
             sidebar_layout.addWidget(btn)
             if item == "Dashboard":
                 btn.setChecked(False) 
+            if item == "Perbarui Sesi Login":
+                btn.clicked.connect(self.perbarui_sesi_login)
 
         sidebar_layout.addStretch()
 
@@ -564,6 +568,38 @@ class MetarApp(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+    def perbarui_sesi_login(self):
+        sender_btn = self.sender()
+        if sender_btn is not None:
+            sender_btn.setChecked(False)
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Perbarui Sesi Login")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText("Browser akan terbuka untuk login BMKGSatu.\n\n"
+                    "Silakan login secara manual, lalu klik tombol 'Resume' atau 'F8' pada "
+                    "jendela Playwright Inspector agar sesi login tersimpan.")
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
+
+        self.session_worker = SessionUpdateWorker()
+        self.session_worker.selesai.connect(self.on_sesi_login_selesai)
+        self.session_worker.start()
+
+    def on_sesi_login_selesai(self, sukses, pesan):
+        msg = QMessageBox(self)
+        if sukses:
+            msg.setWindowTitle("Berhasil")
+            msg.setIcon(QMessageBox.Information)
+        else:
+            msg.setWindowTitle("Gagal")
+            msg.setIcon(QMessageBox.Critical)
+            
+        msg.setText(pesan)
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
