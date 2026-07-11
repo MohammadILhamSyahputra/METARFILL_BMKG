@@ -246,7 +246,7 @@ class MetarApp(QMainWindow):
         
         status_title = QLabel("STATUS METAR")
         status_title.setObjectName("SectionTitle")
-        status_title.setStyleSheet("color: #0070C0; font-size: 12px; font-weight: bold;")
+        status_title.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
         status_layout.addWidget(status_title)
 
         checkbox_layout = QHBoxLayout()
