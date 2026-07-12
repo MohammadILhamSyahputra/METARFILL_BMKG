@@ -632,7 +632,8 @@ class MetarApp(QMainWindow):
         # self.worker = PlaywrightWorker(data_final)
         # self.worker.selesai.connect(self.on_kirim_selesai)
         # self.worker.start()
-        run_test(data_final)
+        nama_user = self.user_data.get("nama", "Observer")
+        run_test(data_final, nama_user)
         QMessageBox.information(self, "Berhasil", "Data sedang dikirim ke BMKGSatu!")
 
     def perbarui_sesi_login(self):

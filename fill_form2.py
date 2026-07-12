@@ -3,7 +3,7 @@ import os
 import time
 from playwright.sync_api import sync_playwright
 
-def run_test(data_cuaca):
+def run_test(data_cuaca, nama_observer):
     if not os.path.exists("auth_state.json"):
         print("Error: File 'auth_state.json' tidak ditemukan!")
         return
@@ -43,17 +43,34 @@ def run_test(data_cuaca):
     # 2. URUTAN 2: ISI NAMA OBSERVER
     # =========================================================
     print("\n[2] Mengisi Nama Observer...")
-    observer_target = "Alfi"  # <-- Nama observer otomatis Anda
     observer_container = page.locator("div.form-group:has(label:has-text('Nama Observer'))")
+    
+    # 2. Fokus ke input pencarian dropdown (.vs__search)
     observer_search = observer_container.locator(".vs__search")
     
+    # 3. Klik dan hapus isi lama, lalu isi dengan nama_observer
     observer_search.click()
-    observer_search.fill(observer_target)
+    observer_search.fill("") # Bersihkan dulu
+    observer_search.fill(nama_observer)
     
-    observer_option = observer_container.locator(f"ul[role='listbox'] li:has-text('{observer_target}')")
-    observer_option.wait_for(state="visible")
-    observer_option.click()
-    print(f"-> Nama Observer '{observer_target}' Berhasil dipilih!")
+    # 4. Tunggu dropdown muncul
+    # Gunakan selector yang lebih umum agar tidak bergantung pada teks yang persis sama
+    observer_option = observer_container.locator("ul[role='listbox'] li")
+    
+    # Tunggu sampai ada opsi yang muncul
+    observer_option.first.wait_for(state="visible", timeout=10000)
+    
+    # 5. Klik opsi yang mengandung nama_observer
+    # Kita gunakan filter di sini agar lebih akurat
+    target_option = observer_container.locator(f"ul[role='listbox'] li:has-text('{nama_observer}')")
+    
+    if target_option.count() > 0:
+        target_option.click()
+        print(f"-> Nama Observer '{nama_observer}' Berhasil dipilih!")
+    else:
+        print(f"-> ERROR: Nama '{nama_observer}' tidak ditemukan di list!")
+        # Debug: list apa saja yang muncul?
+        print(f"List tersedia: {observer_option.all_text_contents()}")
     
     time.sleep(1)
 
