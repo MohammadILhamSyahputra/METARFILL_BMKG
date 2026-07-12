@@ -405,8 +405,9 @@ class DashboardApp(QMainWindow):
         conn.close()
         
         from form_input import MetarApp
-        self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data)
+        self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
         self.form_input_window.show()
+        self.close()
 
     def handle_menu_click(self, button_id):
         # Jika Riwayat METAR (Index 1) diklik

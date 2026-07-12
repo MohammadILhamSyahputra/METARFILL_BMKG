@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
 
 from session_worker import SessionUpdateWorker
+from auth_utils import get_db_path
 
 class RiwayatApp(QMainWindow):
     def __init__(self, user_data=None):
@@ -257,7 +258,34 @@ class RiwayatApp(QMainWindow):
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-        self.menu_group.idClicked.connect(self.handle_menu_click)        
+        self.menu_group.idClicked.connect(self.handle_menu_click)
+        self.load_riwayat()
+
+    def load_riwayat(self):
+        import sqlite3
+        db_path = get_db_path() # Pastikan path database benar
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Query JOIN untuk mengambil semua informasi yang diperlukan
+        query = """
+            SELECT 
+                h.waktu_send, 
+                COALESCE(m.raw_metar, 'Data METAR tidak ditemukan'), 
+                u.nama, 
+                h.status 
+            FROM AutoFill_History h
+            LEFT JOIN Users u ON h.id_user = u.id_user
+            LEFT JOIN METAR m ON h.id_metar = m.id_metar
+            ORDER BY h.waktu_send DESC
+        """
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Panggil fungsi populate yang sudah Anda buat
+        self.populate_riwayat_data(rows)       
 
     def handle_menu_click(self, button_id):
         if button_id == 0:
@@ -324,22 +352,32 @@ class RiwayatApp(QMainWindow):
     # 4. FUNGSI PARSING DATA SQLITE KE STRUKTUR BARU
     # ========================================================
     def populate_riwayat_data(self, data_list):
-        """
-        Panggil fungsi ini saat membaca dari database SQLite.
-        Format data_list: [ ["27 Juli 2026 17:00", "05/06/2026 04:30:00Z", "Bagas Eka S", "SUKSES"], ... ]
-        """
         self.table_widget.setRowCount(len(data_list))
         
         for row_idx, row_data in enumerate(data_list):
-            # 1. Mengisi 3 kolom data tekstual pertama
-            for col_idx in range(3):
-                item = QTableWidgetItem(str(row_data[col_idx]))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                self.table_widget.setItem(row_idx, col_idx, item)
+            # 1. Kolom 0: Waktu pengisian (tetap)
+            item0 = QTableWidgetItem(str(row_data[0]))
+            self.table_widget.setItem(row_idx, 0, item0)
             
-            # 2. Mengisi Kolom ke-4 (Aksi / Status Pengiriman) dengan Tombol SUKSES Biru Teks Putih serasi
+            # 2. Kolom 1: Data yang diambil (DIPROSES agar hanya ambil kode waktu)
+            full_metar = str(row_data[1])
+            
+            # Jika teksnya terlalu panjang, kita potong sedikit saja di akhir
+            # agar kolom tidak berantakan
+            if len(full_metar) > 30:
+                display_text = full_metar[:30] + "..."
+            else:
+                display_text = full_metar
+
+            item1 = QTableWidgetItem(display_text)
+            self.table_widget.setItem(row_idx, 1, item1)
+            
+            # 3. Kolom 2: Nama Observer
+            item2 = QTableWidgetItem(str(row_data[2]))
+            self.table_widget.setItem(row_idx, 2, item2)
+            
+            # 4. Kolom 3: Aksi / Status (Tombol)
             status_text = str(row_data[3])
-            
             btn_status = QPushButton(status_text)
             btn_status.setStyleSheet("""
                 QPushButton {
@@ -355,14 +393,12 @@ class RiwayatApp(QMainWindow):
                 QPushButton:hover { background-color: #005691; }
             """)
             
-            # Kontainer transparan untuk mempertahankan estetika baris putih polos
             container_widget = QWidget()
             container_widget.setStyleSheet("background-color: transparent; border: none;")
             container_layout = QHBoxLayout(container_widget)
             container_layout.setContentsMargins(0, 0, 0, 0)
             container_layout.addWidget(btn_status)
             
-            # Pasang di kolom indeks ke-3 (Aksi)
             self.table_widget.setCellWidget(row_idx, 3, container_widget)
 
 if __name__ == "__main__":

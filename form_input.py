@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -8,13 +9,16 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QFont, QIcon
 
+from auth_utils import get_db_path
 from session_worker import SessionUpdateWorker
+from datetime import datetime
 
 class MetarApp(QMainWindow):
-    def __init__(self, data_metar=None, user_data=None):
+    def __init__(self, data_metar=None, user_data=None, parent_window=None):
         super().__init__()
         self.data_metar = data_metar
         self.user_data = user_data or {"id_user": None, "nama": "Zenita Endriani", "role": "Observer"}
+        self.parent_window = parent_window
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri")
         self.resize(1100, 700) # Sedikit diperlebar agar proporsi grid seimbang
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
@@ -580,13 +584,27 @@ class MetarApp(QMainWindow):
             self.isi_data_ke_form()
 
         kirim_btn.clicked.connect(self.proses_kirim)
+        batal_btn.clicked.connect(self.batal_kirim)
+
+    def batal_kirim(self):
+        if self.parent_window:
+            self.parent_window.show() # Tampilkan kembali dashboard
+        self.close()
 
     def isi_data_ke_form(self):
         # Sesuaikan indeks [0], [1], dst dengan urutan query SELECT Anda di Dashboard
         # Contoh urutan data: waktu, arah, kec, vis, tinggi, temp, embun
         d = self.data_metar
+        data_dict = dict(d) 
+        
+        print(f"DEBUG: Data dictionary: {data_dict}")
+        print(f"DEBUG: Isi lengkap data_metar: {d}")
 
-        if 'raw_metar' in d.keys():
+        # if 'raw_metar' in d.keys():
+        #     self.input_metar.setText(str(d['raw_metar']))
+        if 'raw_metar' in d:
+        # Jika teksnya terpotong di UI, mungkin karena keterbatasan QLineEdit
+        # Gunakan QTextEdit jika teksnya sangat panjang
             self.input_metar.setText(str(d['raw_metar']))
         
         # Waktu (Contoh: "05:30")
@@ -633,8 +651,40 @@ class MetarApp(QMainWindow):
         # self.worker.selesai.connect(self.on_kirim_selesai)
         # self.worker.start()
         nama_user = self.user_data.get("nama", "Observer")
-        run_test(data_final, nama_user)
-        QMessageBox.information(self, "Berhasil", "Data sedang dikirim ke BMKGSatu!")
+        id_user = self.user_data.get("id_user")
+        id_metar = d['id_metar']
+        # 2. Jalankan proses kirim dengan Error Handling
+        try:
+            # Menjalankan otomatisasi
+            run_test(data_final, nama_user)
+            
+            # Jika sampai di sini berarti SUKSES
+            self.simpan_ke_history(id_user, id_metar, "SUKSES")
+            QMessageBox.information(self, "Berhasil", "Data berhasil dikirim ke BMKGSatu dan riwayat tersimpan!")
+            
+        except Exception as e:
+            # Jika terjadi error saat otomatisasi (misal web down/timeout)
+            self.simpan_ke_history(id_user, id_metar, "GAGAL")
+            QMessageBox.critical(self, "Error", f"Pengiriman gagal: {str(e)}")
+        # run_test(data_final, nama_user)
+        # QMessageBox.information(self, "Berhasil", "Data sedang dikirim ke BMKGSatu!")
+
+    def simpan_ke_history(self, id_user, id_metar, status):
+    # Mendapatkan waktu sekarang dalam format ISO (YYYY-MM-DD HH:MM:SS)
+        waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Masukkan waktu_sekarang ke kolom waktu_send
+        cursor.execute("""
+            INSERT INTO AutoFill_History (id_user, id_metar, waktu_send, status) 
+            VALUES (?, ?, ?, ?)""", (id_user, id_metar, waktu_sekarang, status)
+        )
+        
+        conn.commit()
+        conn.close()
 
     def perbarui_sesi_login(self):
         sender_btn = self.sender()
