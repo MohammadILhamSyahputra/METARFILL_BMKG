@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -9,7 +10,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
 
+from auth_utils import get_db_path
 from session_worker import SessionUpdateWorker
+from parser import parse_metar, simpan_ke_db
+import requests
+from datetime import datetime
 
 class DashboardApp(QMainWindow):
     def __init__(self, user_data=None):
@@ -229,10 +234,12 @@ class DashboardApp(QMainWindow):
         table_header_layout.addWidget(btn_ambil_data)
         content_layout.addLayout(table_header_layout)
 
+        
+
         self.table_widget = QTableWidget()
-        self.table_widget.setColumnCount(8)
+        self.table_widget.setColumnCount(9)
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "tinggi awan", "Temp", "Embun", "Aksi"
+            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "tinggi awan", "Temp", "Embun", "id_metar", "Aksi"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
@@ -288,6 +295,118 @@ class DashboardApp(QMainWindow):
 
         # PERBAIKAN UTAMA: Mengubah dari .buttonClicked ke .idClicked agar mengirimkan parameter ID int
         self.menu_group.idClicked.connect(self.handle_menu_click)
+        btn_ambil_data.clicked.connect(self.refresh_table)
+        self.load_data_to_table()
+
+    def load_data_to_table(self):
+        db_path = get_db_path() # Pastikan fungsi ini tersedia
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Query hanya untuk kolom-kolom yang Anda inginkan
+        query = """
+            SELECT 
+                m.waktu_observasi, 
+                p.wind_direction, 
+                p.wind_speed, 
+                p.visibility_prevailing, 
+                p.cloud_height, 
+                p.temperature, 
+                p.dewpoint,
+                m.id_metar
+            FROM METAR m
+            JOIN Parsing_Result p ON m.id_metar = p.id_metar
+            ORDER BY m.tanggal_observasi DESC, m.waktu_observasi DESC
+        """
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Bersihkan tabel sebelum mengisi
+        self.table_widget.setRowCount(0)
+        
+        for row_data in rows:
+            row_idx = self.table_widget.rowCount()
+            self.table_widget.insertRow(row_idx)
+            
+            # Memasukkan setiap kolom ke tabel
+            for col_idx, data in enumerate(row_data):
+                item = QTableWidgetItem(str(data))
+                item.setTextAlignment(Qt.AlignCenter) # Agar lebih rapi di tengah
+                self.table_widget.setItem(row_idx, col_idx, item)
+            
+            # Menambahkan tombol "Detail" di kolom terakhir (Aksi)
+            btn_detail = QPushButton("Detail")
+            btn_detail.setStyleSheet("background-color: #0070C0; color: white; border-radius: 4px;")
+            btn_detail.clicked.connect(lambda checked, data=row_data: self.buka_form_input(data[-1])) # Kirim ID metar
+            self.table_widget.setCellWidget(row_idx, 8, btn_detail) # Kolom ke-8 adalah Aksi
+
+    def refresh_table(self):
+        # 1. Tambahkan indikator visual (opsional, untuk UX)
+        self.statusBar().showMessage("Mengambil data terbaru dari BMKG...")
+        QApplication.processEvents() # Agar UI tidak 'freeze' saat download
+        
+        try:
+            # 2. Ambil data dari BMKG
+            url = f"https://aviation.bmkg.go.id/latest/metar.php?i=ward&y={datetime.now().year}&m={datetime.now().month}"
+            response = requests.get(url, timeout=10) # Tambahkan timeout agar tidak hang
+            
+            if response.status_code == 200:
+                lines = response.text.splitlines()
+                metar_lines = [line for line in lines if "METAR WARD" in line]
+                
+                if not metar_lines:
+                    QMessageBox.warning(self, "Info", "Data METAR WARD tidak ditemukan di server.")
+                    return
+
+                data_baru_ditemukan = False
+                
+                # 3. Looping semua baris untuk antisipasi jika ada data yang terlewat
+                for line in metar_lines:
+                    data = parse_metar(line)
+                    if data:
+                        status = simpan_ke_db(data, line) # Memanggil fungsi yang sudah kita perbaiki
+                        if status == "success":
+                            data_baru_ditemukan = True
+                
+                # 4. Refresh tampilan tabel
+                if data_baru_ditemukan:
+                    self.load_data_to_table()
+                    QMessageBox.information(self, "Berhasil", "Data METAR baru berhasil diperbarui!")
+                else:
+                    QMessageBox.information(self, "Info", "Data sudah mutakhir (tidak ada data baru).")
+            else:
+                QMessageBox.critical(self, "Gagal", f"Gagal menghubungi server BMKG (Status: {response.status_code})")
+        
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Terjadi kesalahan: {str(e)}")
+        
+        finally:
+            self.statusBar().clearMessage()
+
+    # def buka_form_input(self, data):
+    #     from form_input import MetarApp # Pastikan nama kelasnya sama
+    #     self.form_input_window = MetarApp(data_metar=data) # Kirim data ke sini
+    #     self.form_input_window.show()
+    def buka_form_input(self, id_metar): # Terima ID saja
+        conn = sqlite3.connect(get_db_path())
+        conn.row_factory = sqlite3.Row 
+        cursor = conn.cursor()
+        
+        # Query JOIN agar kita dapat data dari KEDUA tabel
+        query = """
+            SELECT m.*, p.* FROM METAR m
+            JOIN Parsing_Result p ON m.id_metar = p.id_metar
+            WHERE m.id_metar = ?
+        """
+        cursor.execute(query, (id_metar,))
+        data_lengkap = cursor.fetchone() 
+        conn.close()
+        
+        from form_input import MetarApp
+        self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data)
+        self.form_input_window.show()
 
     def handle_menu_click(self, button_id):
         # Jika Riwayat METAR (Index 1) diklik

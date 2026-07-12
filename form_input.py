@@ -11,8 +11,10 @@ from PySide6.QtGui import QPixmap, QFont, QIcon
 from session_worker import SessionUpdateWorker
 
 class MetarApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, data_metar=None, user_data=None):
         super().__init__()
+        self.data_metar = data_metar
+        self.user_data = user_data or {"id_user": None, "nama": "Zenita Endriani", "role": "Observer"}
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri")
         self.resize(1100, 700) # Sedikit diperlebar agar proporsi grid seimbang
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
@@ -70,6 +72,11 @@ class MetarApp(QMainWindow):
         # User Profile menggunakan QPixmap
         user_layout = QHBoxLayout()
         user_name = QLabel("Zenita Endriani")
+        user_name.setFont(QFont("Arial", 11, QFont.Bold))
+
+        # User Profile
+        user_layout = QHBoxLayout()
+        user_name = QLabel(self.user_data.get("nama", "Observer"))
         user_name.setFont(QFont("Arial", 11, QFont.Bold))
         
         user_icon = QLabel()
@@ -568,6 +575,65 @@ class MetarApp(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+        if self.data_metar:
+            self.isi_data_ke_form()
+
+        kirim_btn.clicked.connect(self.proses_kirim)
+
+    def isi_data_ke_form(self):
+        # Sesuaikan indeks [0], [1], dst dengan urutan query SELECT Anda di Dashboard
+        # Contoh urutan data: waktu, arah, kec, vis, tinggi, temp, embun
+        d = self.data_metar
+
+        if 'raw_metar' in d.keys():
+            self.input_metar.setText(str(d['raw_metar']))
+        
+        # Waktu (Contoh: "05:30")
+        waktu_str = d['waktu_observasi'] # Contoh: "06:00"
+        if waktu_str and ":" in waktu_str:
+            jam, menit = waktu_str.split(":")
+            self.input_jam.setText(jam)
+            self.input_menit.setText(menit)
+        
+        self.input_arah_angin.setText(str(d['wind_direction']))
+        self.input_kecepatan_angin.setText(str(d['wind_speed']))
+        self.input_arah_min.setText(str(d['wind_dir_min']))
+        self.input_arah_max.setText(str(d['wind_dir_max']))
+        self.input_prevailing.setText(str(d['visibility_prevailing']))
+        self.input_jumlah_awan.setText(str(d['cloud_cover']))
+        self.input_tinggi_awan.setText(str(d['cloud_height']))
+        self.input_temp.setText(str(d['temperature']))
+        self.input_embun.setText(str(d['dewpoint']))
+        self.input_tekanan.setText(str(d['pressure']))          # Tekanan
+
+    def proses_kirim(self):
+        from fill_form2 import run_test
+        d = self.data_metar  # Ambil data dari form_dashboard.py
+        # Ambil data terbaru dari form (jika user mengedit manual)
+        data_final = {
+            "full_date": d['tanggal_observasi'], # Ambil dari database
+            "hour": self.input_jam.text(),
+            "minute": self.input_menit.text(),
+            "direction": self.input_arah_angin.text(),
+            "speed": self.input_kecepatan_angin.text(),
+            "dir_min": self.input_arah_min.text(),
+            "dir_max": self.input_arah_max.text(),
+            "visibility": self.input_prevailing.text(),
+            "cloud_amount": self.input_jumlah_awan.text(),
+            "cloud_height": self.input_tinggi_awan.text(),
+            "temp": self.input_temp.text(),
+            "dew_point": self.input_embun.text(),
+            "pressure": self.input_tekanan.text()
+            # ... sesuaikan key dengan apa yang diminta fill_form2.py
+        }
+        
+        # Jalankan proses kirim
+        # self.worker = PlaywrightWorker(data_final)
+        # self.worker.selesai.connect(self.on_kirim_selesai)
+        # self.worker.start()
+        run_test(data_final)
+        QMessageBox.information(self, "Berhasil", "Data sedang dikirim ke BMKGSatu!")
 
     def perbarui_sesi_login(self):
         sender_btn = self.sender()
