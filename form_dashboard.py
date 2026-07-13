@@ -350,7 +350,7 @@ class DashboardApp(QMainWindow):
         try:
             # 2. Ambil data dari BMKG
             url = f"https://aviation.bmkg.go.id/latest/metar.php?i=ward&y={datetime.now().year}&m={datetime.now().month}"
-            response = requests.get(url, timeout=10) # Tambahkan timeout agar tidak hang
+            response = requests.get(url, timeout=30) # Tambahkan timeout agar tidak hang
             
             if response.status_code == 200:
                 lines = response.text.splitlines()
