@@ -271,7 +271,7 @@ class RiwayatApp(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(4) # Diubah menjadi 4 kolom utama
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu pengisian", "Data yang diambil", "Observer", "Aksi"
+            "Waktu pengisian", "Data yang diambil", "Observer", "Status"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
