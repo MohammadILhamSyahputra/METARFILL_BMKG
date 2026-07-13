@@ -168,44 +168,52 @@ class DashboardApp(QMainWindow):
         content_layout.addWidget(dashboard_title)
 
         # --- CARD CARDS INFO SECTION ---
+# --- CARD CARDS INFO SECTION ---
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
+        # --- KARTU KIRI (DATA TERAKHIR) ---
         card_terakhir = QFrame()
         card_terakhir.setStyleSheet("background-color: #5B9E63; border-radius: 12px; border: none;")
         layout_c1 = QVBoxLayout(card_terakhir)
         layout_c1.setContentsMargins(15, 12, 15, 12)
-        lbl_c1_title = QLabel("Data Terakhir")
+        lbl_c1_title = QLabel("Data Terakhir (Jam)")
         lbl_c1_title.setStyleSheet("color: #E2E2E2; font-weight: bold; font-size: 11px;")
-        lbl_c1_val = QLabel("01 : 30")
-        lbl_c1_val.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
+        
+        # PERBAIKAN: Menggunakan self. agar bisa di-update dari database
+        self.lbl_data_terakhir = QLabel("-- : --")
+        self.lbl_data_terakhir.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
         layout_c1.addWidget(lbl_c1_title)
-        layout_c1.addWidget(lbl_c1_val)
+        layout_c1.addWidget(self.lbl_data_terakhir)
 
-        card_otomasi = QFrame()
-        card_otomasi.setStyleSheet("background-color: #B58D47; border-radius: 12px; border: none;")
-        layout_c2 = QVBoxLayout(card_otomasi)
+        # --- KARTU TENGAH (SESI LOGIN AKTIF) ---
+        self.card_sesi = QFrame()
+        self.card_sesi.setStyleSheet("background-color: #B58D47; border-radius: 12px; border: none;") 
+        layout_c2 = QVBoxLayout(self.card_sesi)
         layout_c2.setContentsMargins(15, 12, 15, 12)
-        lbl_c2_title = QLabel("Status Otomasi")
+        lbl_c2_title = QLabel("Sesi Login Aktif")
         lbl_c2_title.setStyleSheet("color: #E2E2E2; font-weight: bold; font-size: 11px;")
-        lbl_c2_val = QLabel("Sukses")
-        lbl_c2_val.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
+        self.lbl_status_sesi = QLabel("Memeriksa...") 
+        self.lbl_status_sesi.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
         layout_c2.addWidget(lbl_c2_title)
-        layout_c2.addWidget(lbl_c2_val)
+        layout_c2.addWidget(self.lbl_status_sesi)
 
+        # --- KARTU KANAN (JUMLAH DATA) ---
         card_jumlah = QFrame()
         card_jumlah.setStyleSheet("background-color: #79A9BF; border-radius: 12px; border: none;")
         layout_c3 = QVBoxLayout(card_jumlah)
         layout_c3.setContentsMargins(15, 12, 15, 12)
         lbl_c3_title = QLabel("Jumlah Data")
         lbl_c3_title.setStyleSheet("color: #E2E2E2; font-weight: bold; font-size: 11px;")
-        lbl_c3_val = QLabel("48")
-        lbl_c3_val.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
+        
+        # PERBAIKAN: Menggunakan self. agar bisa di-update dari database
+        self.lbl_jumlah_data = QLabel("0")
+        self.lbl_jumlah_data.setStyleSheet("color: white; font-weight: bold; font-size: 26px; margin-top: 5px;")
         layout_c3.addWidget(lbl_c3_title)
-        layout_c3.addWidget(lbl_c3_val)
+        layout_c3.addWidget(self.lbl_jumlah_data)
 
         cards_layout.addWidget(card_terakhir)
-        cards_layout.addWidget(card_otomasi)
+        cards_layout.addWidget(self.card_sesi)
         cards_layout.addWidget(card_jumlah)
         content_layout.addLayout(cards_layout)
 
@@ -293,10 +301,14 @@ class DashboardApp(QMainWindow):
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-        # PERBAIKAN UTAMA: Mengubah dari .buttonClicked ke .idClicked agar mengirimkan parameter ID int
+        # Hubungkan Sinyal & Aksi Tombol
         self.menu_group.idClicked.connect(self.handle_menu_click)
         btn_ambil_data.clicked.connect(self.refresh_table)
         self.load_data_to_table()
+        
+        # TAMBAHKAN BARIS INI: Pemicu awal agar status sesi langsung terdeteksi
+        self.update_info_status_sesi()
+        self.update_info_cards_from_db()
 
     def load_data_to_table(self):
         db_path = get_db_path() # Pastikan fungsi ini tersedia
@@ -373,6 +385,7 @@ class DashboardApp(QMainWindow):
                 # 4. Refresh tampilan tabel
                 if data_baru_ditemukan:
                     self.load_data_to_table()
+                    self.update_info_cards_from_db()
                     QMessageBox.information(self, "Berhasil", "Data METAR baru berhasil diperbarui!")
                 else:
                     QMessageBox.information(self, "Info", "Data sudah mutakhir (tidak ada data baru).")
@@ -449,18 +462,82 @@ class DashboardApp(QMainWindow):
         self.session_worker.selesai.connect(self.on_sesi_login_selesai)
         self.session_worker.start()
 
+    def handle_sesi_selesai(self, sukses, pesan):
+        if sukses:
+            print(pesan)
+            # Mengubah teks kartu tengah secara otomatis menjadi 'Aktif'
+            self.update_info_status_sesi() 
+        else:
+            print(f"Error: {pesan}")
+            # Opsional: ubah teks jadi gagal jika error
+            self.lbl_status_sesi.setText("Gagal")
+            self.lbl_status_sesi.setStyleSheet("color: #FFD2D2; font-weight: bold; font-size: 26px; margin-top: 5px;")
+
     def on_sesi_login_selesai(self, sukses, pesan):
         msg = QMessageBox(self)
         if sukses:
             msg.setWindowTitle("Berhasil")
             msg.setIcon(QMessageBox.Information)
         else:
-            msg.setWindowTitle("Gagal")
+            msg.setWindowTitle("Gagal") 
             msg.setIcon(QMessageBox.Critical)
             
         msg.setText(pesan)
         msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
         msg.exec()
+
+    def update_info_status_sesi(self):
+        """Fungsi untuk memeriksa apakah file session Playwright aktif/ada"""
+        import os
+        from datetime import datetime
+        
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        auth_path = os.path.join(current_dir, "auth_state.json")
+        
+        if os.path.exists(auth_path):
+            # Mengambil waktu terakhir file sesi diperbarui
+            timestamp = os.path.getmtime(auth_path)
+            waktu_modifikasi = datetime.fromtimestamp(timestamp)
+            
+            # Tampilkan tanggal atau teks aktif
+            # Misal hanya menampilkan format jam atau status singkat:
+            self.lbl_status_sesi.setText("Aktif")
+            self.lbl_status_sesi.setStyleSheet("color: #FFFFFF; font-size: 24px; font-weight: bold;")
+        else:
+            # Jika file json belum terbentuk sama sekali
+            self.lbl_status_sesi.setText("Kosong")
+            self.lbl_status_sesi.setStyleSheet("color: #FFD2D2; font-size: 24px; font-weight: bold;")
+
+    def update_info_cards_from_db(self):
+        """Fungsi untuk mengambil waktu terakhir dan total data METAR langsung dari database"""
+        try:
+            db_path = get_db_path()
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            # 1. Query untuk mengambil total seluruh baris data di tabel METAR
+            cursor.execute("SELECT COUNT(*) FROM METAR")
+            total_data = cursor.fetchone()[0]
+            self.lbl_jumlah_data.setText(str(total_data))
+
+            # 2. Query untuk mengambil waktu observasi paling terbaru (terakhir diinput)
+            cursor.execute("SELECT waktu_observasi FROM METAR ORDER BY tanggal_observasi DESC, waktu_observasi DESC LIMIT 1")
+            row_waktu = cursor.fetchone()
+            
+            if row_waktu:
+                # Format waktu asli di DB biasanya "03:00", kita ubah visualnya menjadi "03 : 00" agar estetik
+                waktu_raw = row_waktu[0]
+                if ":" in waktu_raw:
+                    jam, menit = waktu_raw.split(":")
+                    self.lbl_data_terakhir.setText(f"{jam} : {menit}")
+                else:
+                    self.lbl_data_terakhir.setText(waktu_raw)
+            else:
+                self.lbl_data_terakhir.setText("-- : --")
+
+            conn.close()
+        except Exception as e:
+            print(f"Gagal memuat info kartu dari database: {e}")
 
     def buka_riwayat(self):
         from form_riwayat_data import RiwayatApp
