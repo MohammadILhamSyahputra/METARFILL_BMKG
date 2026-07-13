@@ -142,22 +142,24 @@ class MetarApp(QMainWindow):
         self.menu_group.setExclusive(True)
 
         menu_items = ["Dashboard", "Riwayat METAR", "Perbarui Sesi Login"]
-        for item in menu_items:
+        for idx, item in enumerate(menu_items):
             btn = QPushButton(item)
             btn.setCheckable(True)
-            self.menu_group.addButton(btn)
+            self.menu_group.addButton(btn, idx)
             sidebar_layout.addWidget(btn)
-            if item == "Dashboard":
-                btn.setChecked(False) 
-            if item == "Perbarui Sesi Login":
-                btn.clicked.connect(self.perbarui_sesi_login)
 
         sidebar_layout.addStretch()
 
-        logout_btn = QPushButton("LOGOUT")
-        logout_btn.setObjectName("LogoutBtn")
-        sidebar_layout.addWidget(logout_btn)
+        self.logout_btn = QPushButton("LOGOUT")
+        self.logout_btn.setObjectName("LogoutBtn")
+        sidebar_layout.addWidget(self.logout_btn)
         body_layout.addWidget(sidebar)
+
+        # Sebelumnya tombol sidebar (Dashboard, Riwayat METAR, LOGOUT) tidak
+        # terhubung ke fungsi apa pun sehingga berpindah halaman tidak
+        # berfungsi dari form ini. Hubungkan semuanya di sini.
+        self.menu_group.idClicked.connect(self.handle_menu_click)
+        self.logout_btn.clicked.connect(self.proses_logout)
 
         # --- CONTENT CONTAINER (Form Title & Scroll Area) ---
         content_container = QWidget()
@@ -595,17 +597,31 @@ class MetarApp(QMainWindow):
         # Sesuaikan indeks [0], [1], dst dengan urutan query SELECT Anda di Dashboard
         # Contoh urutan data: waktu, arah, kec, vis, tinggi, temp, embun
         d = self.data_metar
-        data_dict = dict(d) 
+        data_dict = dict(d)
+        print(data_dict)
+        print("RAW =", repr(data_dict.get("raw_metar"))) 
         
         print(f"DEBUG: Data dictionary: {data_dict}")
         print(f"DEBUG: Isi lengkap data_metar: {d}")
 
-        # if 'raw_metar' in d.keys():
-        #     self.input_metar.setText(str(d['raw_metar']))
-        if 'raw_metar' in d:
-        # Jika teksnya terpotong di UI, mungkin karena keterbatasan QLineEdit
-        # Gunakan QTextEdit jika teksnya sangat panjang
-            self.input_metar.setText(str(d['raw_metar']))
+        # PENTING: sqlite3.Row TIDAK mendukung `in` untuk mengecek nama kolom
+        # (operator `in` pada Row akan mengecek nilai/value, bukan key/kolom),
+        # sehingga sebelumnya `'raw_metar' in d` selalu bernilai False dan
+        # kolom METAR di form selalu kosong. Gunakan akses langsung dengan
+        # try/except supaya tidak bergantung pada perilaku `in`/keys() sama
+        # sekali.
+        try:
+            raw_metar_value = d['raw_metar']
+        except (IndexError, KeyError):
+            raw_metar_value = None
+
+        if raw_metar_value:
+            # Isi kolom METAR dengan data mentah (raw) hasil pengambilan dari
+            # BMKG, BUKAN hasil parsing, sesuai kebutuhan form.
+            self.input_metar.setText(str(raw_metar_value))
+            print("TEXTBOX =", self.input_metar.text())
+        else:
+            print("DEBUG: 'raw_metar' tidak ditemukan / kosong pada data_metar yang dikirim ke form ini.")
         
         # Waktu (Contoh: "05:30")
         waktu_str = d['waktu_observasi'] # Contoh: "06:00"
@@ -686,10 +702,38 @@ class MetarApp(QMainWindow):
         conn.commit()
         conn.close()
 
+    def handle_menu_click(self, button_id):
+        if button_id == 0:
+            self.dashboard()
+        elif button_id == 1:
+            self.buka_riwayat()
+        elif button_id == 2:
+            self.perbarui_sesi_login()
+
+    def dashboard(self):
+        from form_dashboard import DashboardApp
+        self.dashboard_window = DashboardApp(user_data=self.user_data)
+        self.dashboard_window.show()
+        self.close()
+
+    def buka_riwayat(self):
+        from form_riwayat_data import RiwayatApp
+        self.riwayat_window = RiwayatApp(user_data=self.user_data)
+        self.riwayat_window.show()
+        self.close()
+
+    def proses_logout(self):
+        from login_page import LoginPage
+        self.login_window = LoginPage()
+        self.login_window.show()
+        self.close()
+
     def perbarui_sesi_login(self):
         sender_btn = self.sender()
-        if sender_btn is not None:
-            sender_btn.setChecked(False)
+        if sender_btn is not None and isinstance(sender_btn, QButtonGroup):
+            active_btn = sender_btn.checkedButton()
+            if active_btn is not None:
+                active_btn.setChecked(False)
 
         msg = QMessageBox(self)
         msg.setWindowTitle("Perbarui Sesi Login")

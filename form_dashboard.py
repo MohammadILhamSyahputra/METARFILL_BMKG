@@ -394,16 +394,31 @@ class DashboardApp(QMainWindow):
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
-        # Query JOIN agar kita dapat data dari KEDUA tabel
+        # PENTING: METAR dan Parsing_Result SAMA-SAMA punya kolom "id_metar"
+        # (dan Parsing_Result juga punya "id_parsing"). Jika dipilih dengan
+        # "SELECT m.*, p.*", sqlite3.Row akan punya nama kolom duplikat, dan
+        # akses berbasis nama seperti d['id_metar'] bisa salah ambil nilai
+        # dari tabel yang tidak diharapkan. Karena itu kolom Parsing_Result
+        # dipilih secara eksplisit (tanpa id_parsing/id_metar) agar seluruh
+        # data (termasuk raw_metar) dari tabel METAR tetap dapat diakses
+        # tanpa ambigu.
         query = """
-            SELECT m.*, p.* FROM METAR m
+            SELECT 
+                m.*, 
+                p.wind_direction, p.wind_speed, p.wind_gust,
+                p.wind_dir_min, p.wind_dir_max,
+                p.visibility_prevailing, p.visibility_minimum,
+                p.cloud_cover, p.cloud_height, p.cloud_type, p.vertical_vis,
+                p.weather_intensity, p.weather_descriptor,
+                p.temperature, p.dewpoint, p.pressure, p.trend
+            FROM METAR m
             JOIN Parsing_Result p ON m.id_metar = p.id_metar
             WHERE m.id_metar = ?
         """
         cursor.execute(query, (id_metar,))
         data_lengkap = cursor.fetchone() 
         conn.close()
-        
+        print(dict(data_lengkap))
         from form_input import MetarApp
         self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
         self.form_input_window.show()

@@ -4,9 +4,10 @@ from PySide6 import QtWidgets
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QPushButton, QFrame, QTableWidget, QTableWidgetItem, 
-    QHeaderView, QButtonGroup, QAbstractItemView, QLineEdit, QMessageBox
+    QHeaderView, QButtonGroup, QAbstractItemView, QLineEdit, QMessageBox,
+    QComboBox, QDateEdit, QCheckBox
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QDate
 from PySide6.QtGui import QPixmap, QFont
 
 from session_worker import SessionUpdateWorker
@@ -159,6 +160,54 @@ class RiwayatApp(QMainWindow):
                 font-size: 12px;
                 color: black;
             }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                padding: 6px;
+                font-size: 12px;
+                color: black;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: black;
+                selection-background-color: #0070C0;
+                selection-color: white;
+                outline: none;
+            }
+            QDateEdit {
+                background-color: white;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                padding: 6px;
+                font-size: 12px;
+                color: black;
+            }
+            QDateEdit QAbstractItemView {
+                background-color: white;
+                color: black;
+                selection-background-color: #0070C0;
+                selection-color: white;
+            }
+            QCalendarWidget QWidget {
+                background-color: white;
+                color: black;
+            }
+            QCalendarWidget QToolButton {
+                color: black;
+                background-color: white;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                color: black;
+                background-color: white;
+                selection-background-color: #0070C0;
+                selection-color: white;
+            }
+            QCheckBox {
+                color: #333333;
+                font-size: 11px;
+                background: transparent;
+            }
             QPushButton {
                 background-color: #0070C0;
                 color: white;
@@ -174,17 +223,30 @@ class RiwayatApp(QMainWindow):
         filter_layout.setContentsMargins(15, 15, 15, 15)
         filter_layout.setSpacing(15)
 
-        # Input Nama Observer
+        # Dropdown Nama Observer
         obs_box = QVBoxLayout()
         obs_box.addWidget(QLabel("Nama Observer"))
-        self.input_filter_observer = QLineEdit()
+        self.input_filter_observer = QComboBox()
+        self.input_filter_observer.addItem("Semua Observer", None)
         obs_box.addWidget(self.input_filter_observer)
         filter_layout.addLayout(obs_box, 40)
 
-        # Input Tanggal Pengisian
+        # Date Picker Tanggal Pengisian
         date_box = QVBoxLayout()
-        date_box.addWidget(QLabel("Tanggal Pengisian"))
-        self.input_filter_tanggal = QLineEdit()
+        date_header = QHBoxLayout()
+        date_header.addWidget(QLabel("Tanggal Pengisian"))
+        self.chk_filter_tanggal = QCheckBox("Aktifkan")
+        self.chk_filter_tanggal.setChecked(False)
+        date_header.addWidget(self.chk_filter_tanggal)
+        date_header.addStretch()
+        date_box.addLayout(date_header)
+
+        self.input_filter_tanggal = QDateEdit()
+        self.input_filter_tanggal.setCalendarPopup(True)
+        self.input_filter_tanggal.setDisplayFormat("yyyy-MM-dd")
+        self.input_filter_tanggal.setDate(QDate.currentDate())
+        self.input_filter_tanggal.setEnabled(False)
+        self.chk_filter_tanggal.toggled.connect(self.input_filter_tanggal.setEnabled)
         date_box.addWidget(self.input_filter_tanggal)
         filter_layout.addLayout(date_box, 40)
 
@@ -259,9 +321,44 @@ class RiwayatApp(QMainWindow):
         self.setCentralWidget(central_widget)
 
         self.menu_group.idClicked.connect(self.handle_menu_click)
+        self.btn_cari.clicked.connect(self.cari_riwayat)
+
+        self.populate_observer_filter()
         self.load_riwayat()
 
-    def load_riwayat(self):
+    def populate_observer_filter(self):
+        """Isi dropdown Nama Observer dengan daftar observer unik dari riwayat."""
+        import sqlite3
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT u.nama
+            FROM AutoFill_History h
+            JOIN Users u ON h.id_user = u.id_user
+            ORDER BY u.nama ASC
+        """)
+        observers = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        self.input_filter_observer.blockSignals(True)
+        self.input_filter_observer.clear()
+        self.input_filter_observer.addItem("Semua Observer", None)
+        for nama in observers:
+            self.input_filter_observer.addItem(nama, nama)
+        self.input_filter_observer.blockSignals(False)
+
+    def cari_riwayat(self):
+        """Dipanggil saat tombol CARI diklik. Terapkan filter Observer & Tanggal."""
+        observer_filter = self.input_filter_observer.currentData()
+        tanggal_filter = None
+        if self.chk_filter_tanggal.isChecked():
+            tanggal_filter = self.input_filter_tanggal.date().toString("yyyy-MM-dd")
+
+        self.load_riwayat(observer_filter=observer_filter, tanggal_filter=tanggal_filter)
+
+    def load_riwayat(self, observer_filter=None, tanggal_filter=None):
         import sqlite3
         db_path = get_db_path() # Pastikan path database benar
         conn = sqlite3.connect(db_path)
@@ -277,13 +374,32 @@ class RiwayatApp(QMainWindow):
             FROM AutoFill_History h
             LEFT JOIN Users u ON h.id_user = u.id_user
             LEFT JOIN METAR m ON h.id_metar = m.id_metar
-            ORDER BY h.waktu_send DESC
         """
-        
-        cursor.execute(query)
+
+        conditions = []
+        params = []
+
+        if observer_filter:
+            conditions.append("u.nama = ?")
+            params.append(observer_filter)
+
+        if tanggal_filter:
+            # h.waktu_send disimpan dalam format 'YYYY-MM-DD HH:MM:SS'
+            conditions.append("DATE(h.waktu_send) = ?")
+            params.append(tanggal_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY h.waktu_send DESC"
+
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
-        
+
+        if not rows and (observer_filter or tanggal_filter):
+            QMessageBox.information(self, "Info", "Tidak ada data yang cocok dengan filter yang dipilih.")
+
         # Panggil fungsi populate yang sudah Anda buat
         self.populate_riwayat_data(rows)       
 
@@ -359,17 +475,18 @@ class RiwayatApp(QMainWindow):
             item0 = QTableWidgetItem(str(row_data[0]))
             self.table_widget.setItem(row_idx, 0, item0)
             
-            # 2. Kolom 1: Data yang diambil (DIPROSES agar hanya ambil kode waktu)
+            # 2. Kolom 1: Data yang diambil (METAR MENTAH, belum diparsing)
             full_metar = str(row_data[1])
-            
-            # Jika teksnya terlalu panjang, kita potong sedikit saja di akhir
-            # agar kolom tidak berantakan
-            if len(full_metar) > 30:
-                display_text = full_metar[:30] + "..."
+
+            # Jika teksnya terlalu panjang, potong hanya untuk tampilan kolom,
+            # namun teks METAR mentah lengkap tetap tersedia lewat tooltip
+            if len(full_metar) > 60:
+                display_text = full_metar[:60] + "..."
             else:
                 display_text = full_metar
 
             item1 = QTableWidgetItem(display_text)
+            item1.setToolTip(full_metar)
             self.table_widget.setItem(row_idx, 1, item1)
             
             # 3. Kolom 2: Nama Observer

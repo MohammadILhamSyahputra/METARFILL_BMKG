@@ -31,6 +31,14 @@ def parse_metar(line):
     now = datetime.now()
     hasil["full_date"] = f"{now.year}-{str(now.month).zfill(2)}-{day.zfill(2)}"
     hasil["label_date"] = f"{now.month}/{int(day)}/{now.year}"
+
+    # PENTING: sebelumnya key 'raw_metar' TIDAK PERNAH dimasukkan ke dict
+    # hasil. Akibatnya, di simpan_ke_db(), `data.get('raw_metar', 'METAR WARD ...')`
+    # selalu jatuh ke nilai default placeholder karena key-nya memang tidak
+    # pernah ada. Simpan baris METAR mentah (utuh, apa adanya) di sini agar
+    # raw_metar yang tersimpan ke database benar-benar data asli, bukan
+    # hasil parsing.
+    hasil["raw_metar"] = line.strip()
     
     # Logic Parsing Anda
     angin = re.search(r'(VRB|[0-9]{3})([0-9]{2,3})(?:G([0-9]{2,3}))?KT', metar_code)
@@ -73,40 +81,13 @@ def parse_metar(line):
         
     return hasil
 
-# def simpan_ke_db(data):
-#     db_path = get_db_path()
-#     conn = sqlite3.connect(db_path)
-#     cursor = conn.cursor()
-
-#     cursor.execute("SELECT id_metar FROM METAR WHERE waktu_observasi = ? AND tanggal_observasi = ?", 
-#                    (f"{data['hour']}:{data['minute']}", data['full_date']))
-    
-#     if cursor.fetchone():
-#         conn.close()
-#         return "exists"
-    
-#     # 1. Simpan ke tabel METAR
-#     cursor.execute("""
-#         INSERT INTO METAR (raw_metar, icao, tanggal_observasi, waktu_observasi) 
-#         VALUES (?, ?, ?, ?)""", 
-#         ("METAR WARD ...", "WARD", data['full_date'], f"{data['hour']}:{data['minute']}")
-#     )
-#     id_metar = cursor.lastrowid
-    
-#     # 2. Simpan ke tabel Parsing_Result
-#     cursor.execute("""
-#         INSERT INTO Parsing_Result (id_metar, wind_direction, wind_speed, visibility_prevailing, 
-#                                     cloud_height, temperature, dewpoint) 
-#         VALUES (?, ?, ?, ?, ?, ?, ?)""",
-#         (id_metar, data['direction'], data['speed'], data['visibility'], 
-#          data['cloud_height'], data['temp'], data['dew_point'])
-#     )
-    
-#     conn.commit()
-#     conn.close()
-#     print("Data berhasil disimpan ke database!")
-
-def simpan_ke_db(data):
+def simpan_ke_db(data, raw_line=None):
+    """
+    raw_line: parameter opsional berisi baris METAR mentah asli. Diterima
+    agar kompatibel dengan pemanggilan simpan_ke_db(data, line) dari
+    form_dashboard.py (tombol refresh). Jika tidak diberikan, akan
+    memakai data['raw_metar'] yang sudah diisi oleh parse_metar().
+    """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -118,13 +99,17 @@ def simpan_ke_db(data):
     if cursor.fetchone():
         conn.close()
         return "exists"
-    
+
+    # Prioritaskan raw_line jika diberikan langsung oleh pemanggil, jika
+    # tidak, pakai data['raw_metar'] yang sudah diisi oleh parse_metar().
+    # Baru kalau dua-duanya kosong, gunakan placeholder sebagai jaga-jaga.
+    raw_metar_text = raw_line or data.get('raw_metar') or 'METAR WARD ...'
+
     # 1. Simpan ke tabel METAR
-    # Gunakan data.get('raw_metar', 'METAR WARD...') agar dinamis
     cursor.execute("""
         INSERT INTO METAR (raw_metar, icao, tanggal_observasi, waktu_observasi) 
         VALUES (?, ?, ?, ?)""", 
-        (data.get('raw_metar', 'METAR WARD ...'), "WARD", data['full_date'], f"{data['hour']}:{data['minute']}")
+        (raw_metar_text, "WARD", data['full_date'], f"{data['hour']}:{data['minute']}")
     )
     id_metar = cursor.lastrowid
     
@@ -159,28 +144,35 @@ def simpan_ke_db(data):
     return "success"
 
 # --- PROSES UTAMA ---
-url = f"https://aviation.bmkg.go.id/latest/metar.php?i=ward&y={datetime.now().year}&m={datetime.now().month}"
-response = requests.get(url)
-lines = response.text.splitlines()
+# PENTING: sebelumnya blok ini TIDAK dibungkus `if __name__ == "__main__":`,
+# sehingga setiap kali file lain melakukan
+# `from parser import parse_metar, simpan_ke_db` (seperti di
+# form_dashboard.py), seluruh proses fetch + simpan ke database di bawah
+# ini otomatis ikut berjalan sendiri saat import — di luar kendali tombol
+# "Refresh" di Dashboard, dan memakai simpan_ke_db(data) versi lama
+# (1 argumen) yang tidak cocok dengan pemanggilan simpan_ke_db(data, line)
+# di form_dashboard.py. Dibungkus di sini agar blok ini hanya berjalan saat
+# parser.py dijalankan langsung (mis. untuk testing manual), bukan saat
+# di-import sebagai modul.
+def _jalankan_fetch_manual():
+    url = f"https://aviation.bmkg.go.id/latest/metar.php?i=ward&y={datetime.now().year}&m={datetime.now().month}"
+    response = requests.get(url)
+    lines = response.text.splitlines()
 
-# Cari baris yang mengandung 'METAR WARD'
-metar_lines = [line for line in lines if "METAR WARD" in line]
+    # Cari baris yang mengandung 'METAR WARD'
+    metar_lines = [line for line in lines if "METAR WARD" in line]
 
-if metar_lines:
-    # Ambil baris TERAKHIR (biasanya yang paling baru)
-    # latest_metar = metar_lines[-1]
-    # print(f"Membaca baris METAR: {latest_metar}")
-    
-    # data = parse_metar(latest_metar)
-    # if data:
-    #     print(f"Data diparsing: {data}")
-    #     run_test(data)
-    for line in metar_lines:
-        print(f"Memproses baris: {line}")
-        data = parse_metar(line)
-        if data:
-            # Panggil fungsi simpan_ke_db yang sudah kita buat
-            simpan_ke_db(data) 
-    print("Semua data berhasil diproses!")
-else:
-    print("Data METAR WARD tidak ditemukan di URL tersebut!")
+    if metar_lines:
+        for line in metar_lines:
+            print(f"Memproses baris: {line}")
+            data = parse_metar(line)
+            if data:
+                # Panggil fungsi simpan_ke_db yang sudah kita buat
+                simpan_ke_db(data)
+        print("Semua data berhasil diproses!")
+    else:
+        print("Data METAR WARD tidak ditemukan di URL tersebut!")
+
+
+if __name__ == "__main__":
+    _jalankan_fetch_manual()
