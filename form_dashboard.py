@@ -3,7 +3,7 @@ import sys
 import os
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QFrame, QGridLayout, QTableWidget, 
+    QLabel, QPushButton,QLineEdit, QFrame, QGridLayout, QTableWidget, 
     QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView,
     QMessageBox
 )
@@ -218,10 +218,28 @@ class DashboardApp(QMainWindow):
         content_layout.addLayout(cards_layout)
 
         # --- TABEL DATA METAR SECTION ---
-        table_header_layout = QHBoxLayout()
-        table_title = QLabel("Tabel Data Metar")
-        table_title.setFont(QFont("Arial", 11, QFont.Bold))
-        table_title.setStyleSheet("color: #000000;")
+        table_section_container = QVBoxLayout()
+        table_section_container.setSpacing(10)
+
+        # Baris 1: Wadah horizontal untuk Input Teks Penuh + Tombol (Sekarang di atas)
+        input_button_layout = QHBoxLayout()
+        input_button_layout.setSpacing(10)
+        
+        self.input_ambil_data = QLineEdit()
+        self.input_ambil_data.setPlaceholderText("Masukkan parameter / stasiun...")
+        self.input_ambil_data.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #A0A0A0;
+                border-radius: 6px;
+                padding: 6px 12px;
+                background-color: white;
+                color: black;
+                font-size: 13px;
+                min-height: 35px;
+                max-height: 35px;
+                margin-top: 15px; /* Memberi jarak dari kartu di atasnya */
+            }
+        """)
         
         btn_ambil_data = QPushButton("Ambil Data Baru")
         btn_ambil_data.setStyleSheet("""
@@ -230,19 +248,27 @@ class DashboardApp(QMainWindow):
                 color: white;
                 font-weight: bold;
                 border: none;
-                border-radius: 2px;
-                padding: 6px 16px;
+                border-radius: 6px;
+                padding: 0px 20px;
                 font-size: 12px;
+                min-height: 35px;
+                max-height: 35px;
+                margin-top: 15px; /* Memberi jarak dari kartu di atasnya */
             }
             QPushButton:hover { background-color: #0000CD; }
         """)
         
-        table_header_layout.addWidget(table_title)
-        table_header_layout.addStretch()
-        table_header_layout.addWidget(btn_ambil_data)
-        content_layout.addLayout(table_header_layout)
+        input_button_layout.addWidget(self.input_ambil_data)
+        input_button_layout.addWidget(btn_ambil_data)
+        table_section_container.addLayout(input_button_layout)
 
-        
+        # Baris 2: Judul "Tabel Data Metar" (Sekarang pindah ke bawah edit teks)
+        table_title = QLabel("Tabel Data Metar")
+        table_title.setFont(QFont("Arial", 11, QFont.Bold))
+        table_title.setStyleSheet("color: #000000; margin-top: 5px; margin-bottom: 5px;")
+        table_section_container.addWidget(table_title)
+
+        content_layout.addLayout(table_section_container)
 
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(9)

@@ -239,6 +239,7 @@ class MetarApp(QMainWindow):
         # --- KOLOM KIRI (STATUS + ANGIN + VISIBILITY) ---
         left_box = QVBoxLayout()
         left_box.setSpacing(15)
+        
 
 # [1] SECTION: STATUS METAR (Eksklusif - Hanya Bisa Pilih Satu)
         status_frame = QFrame()
@@ -407,7 +408,8 @@ class MetarApp(QMainWindow):
         vis_layout.addWidget(self.input_min_vis_dir, 3, 1)
 
         left_box.addWidget(vis_frame)
-        grid_layout.addLayout(left_box, 0, 0) 
+        left_box.addStretch() 
+        grid_layout.addLayout(left_box, 0, 0, Qt.AlignmentFlag.AlignTop)
 
         # --- KOLOM KANAN (WAKTU + AWAN + KUALITAS UDARA) ---
         right_box = QVBoxLayout()
@@ -458,7 +460,48 @@ class MetarApp(QMainWindow):
         waktu_layout.addLayout(waktu_input_layout)
         right_box.addWidget(waktu_frame)
 
-        # --- Section Awan ---
+        # section pengamatan
+        cuaca_frame = QFrame()
+        cuaca_frame.setStyleSheet("""
+            QFrame {
+                border: 1px solid #D0D0D0; 
+                padding: 12px; 
+                border-radius: 8px;
+                background-color: white;
+            }
+            QLabel { border: none; background: transparent; padding: 0px; color: black; }
+            QLineEdit, QComboBox { min-height: 24px; max-height: 24px; }
+        """)
+        cuaca_layout = QVBoxLayout(cuaca_frame)
+        cuaca_layout.setSpacing(8)
+        cuaca_layout.setContentsMargins(12, 12, 12, 12)
+
+        # 1. Cuaca Saat Pengamatan
+        lbl_cuaca_saat = QLabel("CUACA SAAT PENGAMATAN")
+        lbl_cuaca_saat.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
+        cuaca_layout.addWidget(lbl_cuaca_saat)
+        lbl_group1_saat = QLabel("Group 1")
+        lbl_group1_saat.setStyleSheet("font-weight: bold; font-size: 13px; margin-bottom: 2px;")
+        
+        self.input_cuaca_saat = QLineEdit()
+        cuaca_layout.addWidget(lbl_group1_saat)
+        cuaca_layout.addWidget(self.input_cuaca_saat)
+        cuaca_layout.addSpacing(5)
+
+        # 2. Cuaca Yang Lalu
+        lbl_cuaca_lalu = QLabel("CUACA YANG LALU")
+        lbl_cuaca_lalu.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
+        lbl_group1_lalu = QLabel("Group 1")
+        lbl_group1_lalu.setStyleSheet("font-weight: bold; font-size: 13px; margin-bottom: 2px;")
+        
+        self.combo_cuaca_lalu = QLineEdit()
+        cuaca_layout.addWidget(lbl_cuaca_lalu)  
+        cuaca_layout.addWidget(lbl_group1_lalu)
+        cuaca_layout.addWidget(self.combo_cuaca_lalu)
+
+        right_box.addWidget(cuaca_frame)
+
+        # Section Awan
         awan_frame = QFrame()
         awan_frame.setStyleSheet("""
             QFrame {
@@ -528,9 +571,9 @@ class MetarApp(QMainWindow):
         ku_layout.setColumnStretch(1, 1)
         right_box.addWidget(ku_frame)
 
-        grid_layout.addLayout(right_box, 0, 1)
+        right_box.addStretch() 
+        grid_layout.addLayout(right_box, 0, 1, Qt.AlignmentFlag.AlignTop)        
         card_layout.addLayout(grid_layout)
-        card_layout.addStretch()
 
         # ==========================================
         # 3. ACTION BUTTONS (BATAL & KIRIM DATA)
