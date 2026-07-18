@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QPushButton,QLineEdit, QFrame, QGridLayout, QTableWidget, 
     QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView,
-    QMessageBox
+    QMessageBox, QDateEdit
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QFont
@@ -168,7 +168,6 @@ class DashboardApp(QMainWindow):
         content_layout.addWidget(dashboard_title)
 
         # --- CARD CARDS INFO SECTION ---
-# --- CARD CARDS INFO SECTION ---
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
@@ -221,27 +220,101 @@ class DashboardApp(QMainWindow):
         table_section_container = QVBoxLayout()
         table_section_container.setSpacing(10)
 
-        # Baris 1: Wadah horizontal untuk Input Teks Penuh + Tombol (Sekarang di atas)
+        # Membuat wadah horizontal tunggal
         input_button_layout = QHBoxLayout()
-        input_button_layout.setSpacing(10)
+        input_button_layout.setSpacing(15) # Jarak antar komponen dalam baris
         
-        self.input_ambil_data = QLineEdit()
-        self.input_ambil_data.setPlaceholderText("Masukkan parameter / stasiun...")
-        self.input_ambil_data.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #A0A0A0;
-                border-radius: 6px;
-                padding: 6px 12px;
-                background-color: white;
-                color: black;
-                font-size: 13px;
-                min-height: 35px;
-                max-height: 35px;
-                margin-top: 15px; /* Memberi jarak dari kartu di atasnya */
+        # 1. Judul "Tabel Data Metar"
+        table_title = QLabel("Tabel Data Metar")
+        table_title.setFont(QFont("Arial", 11, QFont.Bold))
+        table_title.setStyleSheet("""
+            QLabel {
+                color: #000000; 
+                margin-top: 15px; /* Menyelaraskan jarak dari kartu di atasnya */
             }
         """)
         
+        # 2. Date Picker (QDateEdit)
+        self.input_ambil_data = QDateEdit()
+        self.input_ambil_data.setCalendarPopup(True)
+        self.input_ambil_data.setDisplayFormat("dd-MM-yyyy")
+        self.input_ambil_data.setDateTime(datetime.now())
+        self.input_ambil_data.setFixedWidth(300)
+        self.input_ambil_data.setStyleSheet("""
+            QDateEdit {
+                border: 1px solid #A0A0A0;
+                border-radius: 6px;
+                padding: 6px 10px;
+                background-color: white;
+                color: black;
+                font-size: 15px;
+                font-weight: bold;
+                min-height: 35px;
+                max-height: 35px;
+                margin-top: 15px;
+            }
+            QDateEdit::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 30px;
+                border-left-width: 1px;
+                border-left-color: #A0A0A0;
+                border-left-style: solid;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+                background-color: #F0F4F8;
+            }
+            QDateEdit::down-arrow {
+                subcontrol-origin: content;
+                subcontrol-position: center;
+                position: relative;
+                top: 0px;
+                left: 0px;
+            }
+            QDateEdit::drop-down:hover {
+                background-color: #E0E8F5;
+            }
+        """)
+        self.input_ambil_data.setStyleSheet(self.input_ambil_data.styleSheet() + """
+            QDateEdit::down-arrow:enabled {
+                image: none;
+                width: 0px;
+                height: 0px;
+                border-style: solid;
+                border-width: 5px 4px 0 4px;
+                border-color: #555555 transparent transparent transparent;
+            }
+        """)
+        kalender_popup = self.input_ambil_data.calendarWidget()
+        if kalender_popup:
+            kalender_popup.setStyleSheet("""
+                QCalendarWidget QWidget {
+                    color: black; /* Memaksa semua teks di dalam kalender berwarna hitam */
+                    background-color: white;
+                }
+                QCalendarWidget QMenu {
+                    color: black;
+                    background-color: white;
+                }
+                QCalendarWidget QToolButton {
+                    color: black;
+                    background-color: transparent;
+                    font-weight: bold;
+                }
+                QCalendarWidget QToolButton:hover {
+                    background-color: #E0E8F5;
+                }
+                QCalendarWidget QAbstractItemView:enabled {
+                    color: black;
+                    background-color: white;
+                    selection-background-color: #0070C0;
+                    selection-color: white;
+                }
+            """)
+        
+        # 3. Tombol Pengeksekusi
         btn_ambil_data = QPushButton("Ambil Data Baru")
+        btn_ambil_data.setFixedWidth(150)
         btn_ambil_data.setStyleSheet("""
             QPushButton {
                 background-color: blue;
@@ -249,26 +322,21 @@ class DashboardApp(QMainWindow):
                 font-weight: bold;
                 border: none;
                 border-radius: 6px;
-                padding: 0px 20px;
+                padding: 0px 12px;
                 font-size: 12px;
                 min-height: 35px;
                 max-height: 35px;
-                margin-top: 15px; /* Memberi jarak dari kartu di atasnya */
+                margin-top: 15px;
             }
             QPushButton:hover { background-color: #0000CD; }
         """)
         
-        input_button_layout.addWidget(self.input_ambil_data)
+        # Menyusun urutan elemen dari kiri ke kanan
+        input_button_layout.addWidget(table_title)
+        input_button_layout.addWidget(self.input_ambil_data, 1) 
         input_button_layout.addWidget(btn_ambil_data)
-        table_section_container.addLayout(input_button_layout)
-
-        # Baris 2: Judul "Tabel Data Metar" (Sekarang pindah ke bawah edit teks)
-        table_title = QLabel("Tabel Data Metar")
-        table_title.setFont(QFont("Arial", 11, QFont.Bold))
-        table_title.setStyleSheet("color: #000000; margin-top: 5px; margin-bottom: 5px;")
-        table_section_container.addWidget(table_title)
-
-        content_layout.addLayout(table_section_container)
+        
+        content_layout.addLayout(input_button_layout)
 
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(9)
