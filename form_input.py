@@ -338,9 +338,16 @@ class MetarApp(QMainWindow):
         self.input_kecepatan_angin = QLineEdit()
         angin_layout.addWidget(self.input_kecepatan_angin, 2, 1)
 
+        lbl_gust = QLabel("Gust")
+        angin_layout.addWidget(lbl_gust, 3, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        
+        self.input_gust = QLineEdit()
+        angin_layout.addWidget(self.input_gust, 3, 1)
+
+        # KOREKSI 1: Pindahkan Variasi Angin ke baris indeks 4
         lbl_variasi = QLabel("Variasi Angin")
         lbl_variasi.setStyleSheet("font-weight: bold;")
-        angin_layout.addWidget(lbl_variasi, 3, 0, 1, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        angin_layout.addWidget(lbl_variasi, 4, 0, 1, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         var_layout = QHBoxLayout()
         var_layout.setContentsMargins(0, 0, 0, 0)
@@ -356,7 +363,7 @@ class MetarApp(QMainWindow):
         var_layout.addWidget(lbl_max, 0, Qt.AlignmentFlag.AlignVCenter)
         var_layout.addWidget(self.input_arah_max)
         
-        angin_layout.addLayout(var_layout, 4, 0, 1, 2)
+        angin_layout.addLayout(var_layout, 5, 0, 1, 2)
         left_box.addWidget(angin_frame)
 
         # [3] SECTION: VISIBILITY
@@ -501,7 +508,7 @@ class MetarApp(QMainWindow):
 
         right_box.addWidget(cuaca_frame)
 
-        # Section Awan
+        # SECTION AWAN 
         awan_frame = QFrame()
         awan_frame.setStyleSheet("""
             QFrame {
@@ -511,29 +518,80 @@ class MetarApp(QMainWindow):
                 background-color: white;
             }
             QLabel { border: none; background: transparent; padding: 0px; color: black; }
-            QLineEdit { min-height: 22px; max-height: 22px; }
+            QLabel#TableHeaderTitle {
+                font-weight: bold;
+                color: #555555;
+                font-size: 11px;
+            }
+            QLineEdit { min-height: 24px; max-height: 24px; }
         """)
+        
         awan_layout = QGridLayout(awan_frame)
-        awan_layout.setSpacing(12)
+        awan_layout.setSpacing(10)
         awan_layout.setContentsMargins(12, 12, 12, 12)
         
+        # 1. Judul Utama Section
         awan_title = QLabel("AWAN")
         awan_title.setObjectName("SectionTitle")
         awan_title.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
-        awan_layout.addWidget(awan_title, 0, 0, 1, 2)   
+        awan_layout.addWidget(awan_title, 0, 0, 1, 3)   
 
-        awan_layout.addWidget(QLabel("Jumlah"), 1, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.input_jumlah_awan = QLineEdit()
-        awan_layout.addWidget(self.input_jumlah_awan, 1, 1)
-
-        awan_layout.addWidget(QLabel("Tinggi (FEET)"), 2, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.input_tinggi_awan = QLineEdit()
-        awan_layout.addWidget(self.input_tinggi_awan, 2, 1)
+        # 2. Header Kolom Tabel (Jumlah, Tinggi, Type)
+        lbl_h_jumlah = QLabel("JUMLAH")
+        lbl_h_jumlah.setObjectName("TableHeaderTitle, color: #555555; font-size: 11px; font-weight: bold;")
+        lbl_h_tinggi = QLabel("TINGGI (FEET)")
+        lbl_h_tinggi.setObjectName("TableHeaderTitle, color: #555555; font-size: 11px; font-weight: bold;")
+        lbl_h_type = QLabel("TYPE")
+        lbl_h_type.setObjectName("TableHeaderTitle, color: #555555; font-size: 11px; font-weight: bold;")
         
-        awan_layout.setColumnStretch(0, 0)
-        awan_layout.setColumnStretch(1, 1)
-        right_box.addWidget(awan_frame)
+        awan_layout.addWidget(lbl_h_jumlah, 1, 0, Qt.AlignmentFlag.AlignCenter)
+        awan_layout.addWidget(lbl_h_tinggi, 1, 1, Qt.AlignmentFlag.AlignCenter)
+        awan_layout.addWidget(lbl_h_type, 1, 2, Qt.AlignmentFlag.AlignCenter)
 
+        # 3. Membuat 3 Baris Input Data Menggunakan QLineEdit (Edit Teks)
+        # Baris Awan 1
+        self.input_jumlah_awan1 = QLineEdit()
+        self.input_tinggi_awan1 = QLineEdit()
+        self.input_tipe_awan1 = QLineEdit()
+        
+        awan_layout.addWidget(self.input_jumlah_awan1, 2, 0)
+        awan_layout.addWidget(self.input_tinggi_awan1, 2, 1)
+        awan_layout.addWidget(self.input_tipe_awan1, 2, 2)
+
+        # Baris Awan 2
+        self.input_jumlah_awan2 = QLineEdit()
+        self.input_tinggi_awan2 = QLineEdit()
+        self.input_tipe_awan2 = QLineEdit()
+        
+        awan_layout.addWidget(self.input_jumlah_awan2, 3, 0)
+        awan_layout.addWidget(self.input_tinggi_awan2, 3, 1)
+        awan_layout.addWidget(self.input_tipe_awan2, 3, 2)
+
+        # Baris Awan 3
+        self.input_jumlah_awan3 = QLineEdit()
+        self.input_tinggi_awan3 = QLineEdit()
+        self.input_tipe_awan3 = QLineEdit()
+        
+        awan_layout.addWidget(self.input_jumlah_awan3, 4, 0)
+        awan_layout.addWidget(self.input_tinggi_awan3, 4, 1)
+        awan_layout.addWidget(self.input_tipe_awan3, 4, 2)
+
+        # 4. Input Vertical Vis di baris paling bawah tabel awan
+        lbl_v_vis = QLabel("VERTICAL VIS")
+        lbl_v_vis.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        self.input_vertical_vis = QLineEdit()
+        self.input_vertical_vis.setPlaceholderText("Feet...")
+        
+        awan_layout.addWidget(lbl_v_vis, 5, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        awan_layout.addWidget(self.input_vertical_vis, 5, 1, 1, 2) # Mengambil sisa 2 kolom ke kanan
+
+        # Set proporsi kolom agar lebar ketiganya terbagi sama rata
+        awan_layout.setColumnStretch(0, 1)
+        awan_layout.setColumnStretch(1, 1)
+        awan_layout.setColumnStretch(2, 1)
+        
+        right_box.addWidget(awan_frame)
+        # ===================================================================
         # --- Section Kualitas Udara ---
         ku_frame = QFrame()
         ku_frame.setStyleSheet("""
