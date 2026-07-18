@@ -434,69 +434,51 @@ class DashboardApp(QMainWindow):
     #     from form_input import MetarApp # Pastikan nama kelasnya sama
     #     self.form_input_window = MetarApp(data_metar=data) # Kirim data ke sini
     #     self.form_input_window.show()
-    def buka_form_input(self, id_metar): # Terima ID saja
+    def buka_form_input(self, id_metar):
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
-        # PENTING: METAR dan Parsing_Result SAMA-SAMA punya kolom "id_metar"
-        # (dan Parsing_Result juga punya "id_parsing"). Jika dipilih dengan
-        # "SELECT m.*, p.*", sqlite3.Row akan punya nama kolom duplikat, dan
-        # akses berbasis nama seperti d['id_metar'] bisa salah ambil nilai
-        # dari tabel yang tidak diharapkan. Karena itu kolom Parsing_Result
-        # dipilih secara eksplisit (tanpa id_parsing/id_metar) agar seluruh
-        # data (termasuk raw_metar) dari tabel METAR tetap dapat diakses
-        # tanpa ambigu.
-        # query = """
-        #     SELECT 
-        #         m.*, 
-        #         p.wind_direction, p.wind_speed, p.wind_gust,
-        #         p.wind_dir_min, p.wind_dir_max,
-        #         p.visibility_prevailing, p.visibility_minimum,
-        #         p.cloud_cover, p.cloud_height, p.cloud_type, p.vertical_vis,
-        #         p.weather_intensity, p.weather_descriptor,
-        #         p.temperature, p.dewpoint, p.pressure, p.trend
-        #     FROM METAR m
-        #     JOIN Parsing_Result p ON m.id_metar = p.id_metar
-        #     WHERE m.id_metar = ?
-        # """
-        # cursor.execute(query, (id_metar,))
-        # data_lengkap = cursor.fetchone() 
-        # conn.close()
-        # print(dict(data_lengkap))
-        # from form_input import MetarApp
-        # self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
-        # self.form_input_window.show()
-        # self.close()
+        # PERUBAHAN 1: Pilih kolom secara eksplisit untuk menghindari konflik nama kolom
         query = """
-            SELECT 
-                m.*, 
-                p.*,
-                p.id_parsing AS id_parsing  -- Memastikan id_parsing diambil dari tabel p
+            SELECT m.*, 
+                   p.id_parsing, p.wind_direction, p.wind_speed, p.wind_gust, 
+                   p.wind_dir_min, p.wind_dir_max, p.visibility_prevailing, 
+                   p.temperature, p.dewpoint, p.pressure, p.trend
             FROM METAR m
             JOIN Parsing_Result p ON m.id_metar = p.id_metar
             WHERE m.id_metar = ?
         """
         cursor.execute(query, (id_metar,))
-        data_utama = cursor.fetchone() 
-        print(f"DEBUG: Data utama ditemukan: {dict(data_utama)}")
+        row = cursor.fetchone()
         
-        # 2. Query Data Awan (Ditambahkan)
+        # PERUBAHAN 2: Konversi ke dict agar bisa kita modifikasi
+        data_utama = dict(row) if row else None
+        
+        # PERUBAHAN 3: Jika id_parsing tetap None, ambil paksa dari tabel Parsing_Result
+        if data_utama and data_utama.get('id_parsing') is None:
+            cursor.execute("SELECT id_parsing FROM Parsing_Result WHERE id_metar = ?", (id_metar,))
+            p_row = cursor.fetchone()
+            if p_row:
+                data_utama['id_parsing'] = p_row['id_parsing']
+                print(f"DEBUG: id_parsing berhasil diambil manual: {data_utama['id_parsing']}")
+        
+        print(f"DEBUG: Data utama ditemukan: {data_utama}")
+        
+        # 2. Query Data Awan
         data_awan = []
-        if data_utama and data_utama['id_parsing']:
+        if data_utama and data_utama.get('id_parsing'):
             cursor.execute("SELECT * FROM Awan WHERE id_parsing = ? ORDER BY urutan ASC", 
                            (data_utama['id_parsing'],))
-            # Mengubah hasil query menjadi list of dictionaries
             data_awan = [dict(row) for row in cursor.fetchall()]
         
         conn.close()
 
         # 3. Gabungkan Data
         if data_utama:
-            data_lengkap = dict(data_utama)
-            data_lengkap['clouds'] = data_awan # Menambahkan list awan ke dictionary
-            print(f"DEBUG DASHBOARD: id_metar yang dibuka: {id_metar}")
-            print(f"DEBUG DASHBOARD: Data clouds yang dikirim: {data_lengkap.get('clouds')}")
+            data_lengkap = data_utama
+            data_lengkap['clouds'] = data_awan 
+            print(f"DEBUG DASHBOARD: Data clouds akhir: {data_lengkap.get('clouds')}")
             
             from form_input import MetarApp
             self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
