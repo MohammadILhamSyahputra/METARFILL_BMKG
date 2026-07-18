@@ -342,18 +342,24 @@ class DashboardApp(QMainWindow):
         cursor = conn.cursor()
 
         # Query hanya untuk kolom-kolom yang Anda inginkan
+        # PENTING: p.cloud_height SUDAH TIDAK ADA lagi di Parsing_Result --
+        # data awan (jumlah/tinggi/tipe) sekarang ada di tabel Awan terpisah
+        # karena satu observasi bisa punya sampai 3 layer awan. Untuk kolom
+        # "tinggi awan" di tabel dashboard ini, kita tampilkan tinggi awan
+        # record PERTAMA saja (urutan = 1) lewat LEFT JOIN.
         query = """
             SELECT 
                 m.waktu_observasi, 
                 p.wind_direction, 
                 p.wind_speed, 
                 p.visibility_prevailing, 
-                p.cloud_height, 
+                a1.cloud_height,
                 p.temperature, 
                 p.dewpoint,
                 m.id_metar
             FROM METAR m
             JOIN Parsing_Result p ON m.id_metar = p.id_metar
+            LEFT JOIN Awan a1 ON a1.id_parsing = p.id_parsing AND a1.urutan = 1
             ORDER BY m.tanggal_observasi DESC, m.waktu_observasi DESC
         """
         

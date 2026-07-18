@@ -24,8 +24,8 @@ def parse_metar(line):
         "minute": minute,
         "direction": "0", "speed": "0", 
         "dir_min": "0", "dir_max": "0", 
-        "visibility": "9999", "cloud_amount": "FEW", 
-        "cloud_height": "2000", "temp": "25", "dew_point": "20", "pressure": "1013"
+        "visibility": "9999",
+        "temp": "25", "dew_point": "20", "pressure": "1013"
     }
 
     now = datetime.now()
@@ -59,12 +59,24 @@ def parse_metar(line):
             hasil["visibility"] = "10000"
         else:
             hasil["visibility"] = str(vis_val)
-        
-    awan = re.search(r'(FEW|SCT|BKN|OVC)([0-9]{3})', metar_code)
-    if awan:
-        hasil["cloud_amount"] = awan.group(1)
-        hasil["cloud_height"] = str(int(awan.group(2)) * 100)
-        
+
+    # PENTING: sebelumnya pakai re.search() yang cuma menangkap SATU layer
+    # awan pertama (mis. hanya "FEW020" walau kodenya "FEW020 SCT100 BKN200"),
+    # lalu disimpan sebagai 'cloud_amount'/'cloud_height' tunggal. Sekarang
+    # tabel Awan mendukung sampai 3 record per observasi (lihat fill_form2.py
+    # & setup_database.py), jadi di sini kita tangkap SEMUA layer awan yang
+    # ada di kode METAR (maksimal 3 pertama) sebagai list 'clouds', termasuk
+    # tipe awan (CB/TCU) kalau ada.
+    awan_matches = re.findall(r'(FEW|SCT|BKN|OVC)([0-9]{3})(CB|TCU)?', metar_code)
+    hasil["clouds"] = [
+        {
+            "amount": amount,
+            "height": str(int(height) * 100),
+            "type": tipe or "",
+        }
+        for amount, height, tipe in awan_matches[:3]  # maksimal 3 record
+    ]
+
     temp = re.search(r'(M?[0-9]{2})/(M?[0-9]{2})', metar_code)
     if temp:
         hasil["temp"] = temp.group(1).replace("M", "-")
@@ -113,44 +125,39 @@ def simpan_ke_db(data, raw_line=None):
     )
     id_metar = cursor.lastrowid
     
-    # 2. Simpan ke tabel Parsing_Result dengan data lengkap
+    # 2. Simpan ke tabel Parsing_Result
+    # PENTING: kolom cloud_cover / cloud_height / cloud_type SUDAH TIDAK ADA
+    # lagi di tabel Parsing_Result (lihat setup_database.py) -- data awan
+    # sekarang disimpan terpisah di tabel Awan (langkah 3 di bawah), karena
+    # satu observasi bisa punya sampai 3 layer awan sekaligus. Sebelumnya
+    # INSERT ini masih menyertakan cloud_cover/cloud_height sehingga selalu
+    # gagal dengan "no such column" dan seluruh simpan_ke_db() ikut gagal
+    # (termasuk data awan yang tidak pernah tersimpan).
     cursor.execute("""
         INSERT INTO Parsing_Result (
             id_metar, wind_direction, wind_speed, wind_gust, 
             wind_dir_min, wind_dir_max, visibility_prevailing, 
-            cloud_cover, cloud_height, temperature, dewpoint, 
-            pressure, trend
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            temperature, dewpoint, pressure, trend
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (id_metar, data.get('direction', '0'), data.get('speed', '0'), data.get('gust', '0'), 
         data.get('dir_min', '0'), data.get('dir_max', '0'), data.get('visibility', '9999'), 
-        data.get('cloud_amount', 'FEW'), data.get('cloud_height', '2000'), 
         data.get('temp', '25'), data.get('dew_point', '20'), 
         data.get('pressure', '9999'), data.get('trend', 'NOSIG'))
     )
-     # Ambil ID untuk referensi tabel Awan
+    # Ambil ID untuk referensi tabel Awan
     id_parsing = cursor.lastrowid
     print(f"DEBUG PARSER: id_parsing yang dihasilkan: {id_parsing}")
-    # 3. Simpan ke tabel Awan (Baru ditambahkan)
-    # Jika data['cloud_amount'] ada, kita masukkan ke tabel Awan dengan urutan 1
-    # if data.get('cloud_amount'):
-    #     cursor.execute("""
-    #         INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height) 
-    #         VALUES (?, ?, ?, ?)""",
-    #         (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'))
-    #     )
-    # if data.get('cloud_amount'):
-    #     cursor.execute("""
-    #         INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height, cloud_type) 
-    #         VALUES (?, ?, ?, ?, ?)""",
-    #         (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'), data.get('cloud_type', ''))
-    #     )
-    if id_parsing:
+
+    # 3. Simpan ke tabel Awan (mendukung sampai 3 record per observasi)
+    daftar_awan = data.get('clouds', [])[:3]
+    for urutan, awan in enumerate(daftar_awan, start=1):
         cursor.execute("""
-            INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height) 
-            VALUES (?, ?, ?, ?)""",
-            (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'))
+            INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height, cloud_type) 
+            VALUES (?, ?, ?, ?, ?)""",
+            (id_parsing, urutan, awan.get('amount', ''), awan.get('height', ''), awan.get('type', ''))
         )
-    
+    print(f"DEBUG PARSER: {len(daftar_awan)} record awan disimpan untuk id_parsing={id_parsing}")
+
     conn.commit()
     conn.close()
     print("Data lengkap berhasil disimpan ke database!")
