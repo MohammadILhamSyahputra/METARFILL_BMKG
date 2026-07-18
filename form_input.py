@@ -733,11 +733,27 @@ class MetarApp(QMainWindow):
         
         self.input_arah_angin.setText(str(d['wind_direction']))
         self.input_kecepatan_angin.setText(str(d['wind_speed']))
+        self.input_gust.setText(str(data_dict.get('wind_gust', '0')))
         self.input_arah_min.setText(str(d['wind_dir_min']))
         self.input_arah_max.setText(str(d['wind_dir_max']))
         self.input_prevailing.setText(str(d['visibility_prevailing']))
-        self.input_jumlah_awan.setText(str(d['cloud_cover']))
-        self.input_tinggi_awan.setText(str(d['cloud_height']))
+        # self.input_jumlah_awan1.setText(str(d['cloud_cover']))
+        # self.input_tinggi_awan1.setText(str(d['cloud_height']))
+        awan_data = data_dict.get('clouds', []) # Asumsi 'clouds' adalah list dari query JOIN
+        
+        # Mapping input ke list yang sesuai
+        inputs = [
+            (self.input_jumlah_awan1, self.input_tinggi_awan1, self.input_tipe_awan1),
+            (self.input_jumlah_awan2, self.input_tinggi_awan2, self.input_tipe_awan2),
+            (self.input_jumlah_awan3, self.input_tinggi_awan3, self.input_tipe_awan3)
+        ]
+        
+        for i, awan in enumerate(awan_data):
+            if i < len(inputs):
+                inputs[i][0].setText(str(awan.get('cloud_amount', '')))
+                inputs[i][1].setText(str(awan.get('cloud_height', '')))
+                inputs[i][2].setText(str(awan.get('cloud_type', '')))
+
         self.input_temp.setText(str(d['temperature']))
         self.input_embun.setText(str(d['dewpoint']))
         self.input_tekanan.setText(str(d['pressure']))          # Tekanan
@@ -746,6 +762,23 @@ class MetarApp(QMainWindow):
         from fill_form2 import run_test
         d = self.data_metar  # Ambil data dari form_dashboard.py
         # Ambil data terbaru dari form (jika user mengedit manual)
+        # 1. Kumpulkan data awan dari 3 baris input
+        data_clouds = []
+        input_rows = [
+            (self.input_jumlah_awan1, self.input_tinggi_awan1, self.input_tipe_awan1),
+            (self.input_jumlah_awan2, self.input_tinggi_awan2, self.input_tipe_awan2),
+            (self.input_jumlah_awan3, self.input_tinggi_awan3, self.input_tipe_awan3)
+        ]
+        
+        for jumlah, tinggi, tipe in input_rows:
+            # Hanya kirim jika baris tersebut diisi (misal jumlah awan tidak kosong)
+            if jumlah.text().strip():
+                data_clouds.append({
+                    "amount": jumlah.text().strip(),
+                    "height": tinggi.text().strip(),
+                    "type": tipe.text().strip()
+                })
+
         data_final = {
             "full_date": d['tanggal_observasi'], # Ambil dari database
             "hour": self.input_jam.text(),
@@ -753,10 +786,12 @@ class MetarApp(QMainWindow):
             "direction": self.input_arah_angin.text(),
             "speed": self.input_kecepatan_angin.text(),
             "dir_min": self.input_arah_min.text(),
+            "gust": self.input_gust.text(),
             "dir_max": self.input_arah_max.text(),
             "visibility": self.input_prevailing.text(),
-            "cloud_amount": self.input_jumlah_awan.text(),
-            "cloud_height": self.input_tinggi_awan.text(),
+            # "cloud_amount": self.input_jumlah_awan1.text(),
+            # "cloud_height": self.input_tinggi_awan1.text(),
+            "clouds": data_clouds,
             "temp": self.input_temp.text(),
             "dew_point": self.input_embun.text(),
             "pressure": self.input_tekanan.text()

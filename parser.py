@@ -121,22 +121,35 @@ def simpan_ke_db(data, raw_line=None):
             cloud_cover, cloud_height, temperature, dewpoint, 
             pressure, trend
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            id_metar, 
-            data.get('direction', '0'), 
-            data.get('speed', '0'), 
-            data.get('gust', '0'), 
-            data.get('dir_min', '0'), 
-            data.get('dir_max', '0'), 
-            data.get('visibility', '9999'), 
-            data.get('cloud_amount', 'FEW'),
-            data.get('cloud_height', '2000'), 
-            data.get('temp', '25'), 
-            data.get('dew_point', '20'), 
-            data.get('pressure', '9999'),
-            data.get('trend', 'NOSIG')
-        )
+        (id_metar, data.get('direction', '0'), data.get('speed', '0'), data.get('gust', '0'), 
+        data.get('dir_min', '0'), data.get('dir_max', '0'), data.get('visibility', '9999'), 
+        data.get('cloud_amount', 'FEW'), data.get('cloud_height', '2000'), 
+        data.get('temp', '25'), data.get('dew_point', '20'), 
+        data.get('pressure', '9999'), data.get('trend', 'NOSIG'))
     )
+     # Ambil ID untuk referensi tabel Awan
+    id_parsing = cursor.lastrowid
+    print(f"DEBUG PARSER: id_parsing yang dihasilkan: {id_parsing}")
+    # 3. Simpan ke tabel Awan (Baru ditambahkan)
+    # Jika data['cloud_amount'] ada, kita masukkan ke tabel Awan dengan urutan 1
+    # if data.get('cloud_amount'):
+    #     cursor.execute("""
+    #         INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height) 
+    #         VALUES (?, ?, ?, ?)""",
+    #         (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'))
+    #     )
+    # if data.get('cloud_amount'):
+    #     cursor.execute("""
+    #         INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height, cloud_type) 
+    #         VALUES (?, ?, ?, ?, ?)""",
+    #         (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'), data.get('cloud_type', ''))
+    #     )
+    if id_parsing:
+        cursor.execute("""
+            INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height) 
+            VALUES (?, ?, ?, ?)""",
+            (id_parsing, 1, data.get('cloud_amount'), data.get('cloud_height', '2000'))
+        )
     
     conn.commit()
     conn.close()

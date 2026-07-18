@@ -441,27 +441,61 @@ class DashboardApp(QMainWindow):
         # dipilih secara eksplisit (tanpa id_parsing/id_metar) agar seluruh
         # data (termasuk raw_metar) dari tabel METAR tetap dapat diakses
         # tanpa ambigu.
+        # query = """
+        #     SELECT 
+        #         m.*, 
+        #         p.wind_direction, p.wind_speed, p.wind_gust,
+        #         p.wind_dir_min, p.wind_dir_max,
+        #         p.visibility_prevailing, p.visibility_minimum,
+        #         p.cloud_cover, p.cloud_height, p.cloud_type, p.vertical_vis,
+        #         p.weather_intensity, p.weather_descriptor,
+        #         p.temperature, p.dewpoint, p.pressure, p.trend
+        #     FROM METAR m
+        #     JOIN Parsing_Result p ON m.id_metar = p.id_metar
+        #     WHERE m.id_metar = ?
+        # """
+        # cursor.execute(query, (id_metar,))
+        # data_lengkap = cursor.fetchone() 
+        # conn.close()
+        # print(dict(data_lengkap))
+        # from form_input import MetarApp
+        # self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
+        # self.form_input_window.show()
+        # self.close()
         query = """
             SELECT 
                 m.*, 
-                p.wind_direction, p.wind_speed, p.wind_gust,
-                p.wind_dir_min, p.wind_dir_max,
-                p.visibility_prevailing, p.visibility_minimum,
-                p.cloud_cover, p.cloud_height, p.cloud_type, p.vertical_vis,
-                p.weather_intensity, p.weather_descriptor,
-                p.temperature, p.dewpoint, p.pressure, p.trend
+                p.*,
+                p.id_parsing AS id_parsing  -- Memastikan id_parsing diambil dari tabel p
             FROM METAR m
             JOIN Parsing_Result p ON m.id_metar = p.id_metar
             WHERE m.id_metar = ?
         """
         cursor.execute(query, (id_metar,))
-        data_lengkap = cursor.fetchone() 
+        data_utama = cursor.fetchone() 
+        print(f"DEBUG: Data utama ditemukan: {dict(data_utama)}")
+        
+        # 2. Query Data Awan (Ditambahkan)
+        data_awan = []
+        if data_utama and data_utama['id_parsing']:
+            cursor.execute("SELECT * FROM Awan WHERE id_parsing = ? ORDER BY urutan ASC", 
+                           (data_utama['id_parsing'],))
+            # Mengubah hasil query menjadi list of dictionaries
+            data_awan = [dict(row) for row in cursor.fetchall()]
+        
         conn.close()
-        print(dict(data_lengkap))
-        from form_input import MetarApp
-        self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
-        self.form_input_window.show()
-        self.close()
+
+        # 3. Gabungkan Data
+        if data_utama:
+            data_lengkap = dict(data_utama)
+            data_lengkap['clouds'] = data_awan # Menambahkan list awan ke dictionary
+            print(f"DEBUG DASHBOARD: id_metar yang dibuka: {id_metar}")
+            print(f"DEBUG DASHBOARD: Data clouds yang dikirim: {data_lengkap.get('clouds')}")
+            
+            from form_input import MetarApp
+            self.form_input_window = MetarApp(data_metar=data_lengkap, user_data=self.user_data, parent_window=self)
+            self.form_input_window.show()
+            self.close()
 
     def handle_menu_click(self, button_id):
         # Jika Riwayat METAR (Index 1) diklik
