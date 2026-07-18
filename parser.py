@@ -78,10 +78,10 @@ def parse_metar(line):
     hasil["clouds"] = [
         {
             "amount": amount,
-            "height": height,  # kode 3 digit apa adanya, mis. "020"
+            "height": str(int(height) * 100), 
             "type": tipe or "",
         }
-        for amount, height, tipe in awan_matches[:3]  # maksimal 3 record
+        for amount, height, tipe in awan_matches[:3]
     ]
 
     temp = re.search(r'(M?[0-9]{2})/(M?[0-9]{2})', metar_code)

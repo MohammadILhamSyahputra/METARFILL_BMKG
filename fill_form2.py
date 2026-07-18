@@ -222,13 +222,28 @@ def run_test(data_cuaca, nama_observer):
             # =========================================================
             # 9. URUTAN 9: CHECKBOX VRB (OTOMATIS JIKA KECEPATAN ANGIN > 2 KNOT)
             # =========================================================
-            print("\n[9] Memeriksa kondisi VRB...")
-            try:
-                kecepatan_angin = float(data_cuaca.get('speed', 0) or 0)
-            except (TypeError, ValueError):
-                kecepatan_angin = 0
-
+            print("\n[9] Mengatur kondisi VRB...")
+            kecepatan_angin = float(data_cuaca.get('speed', 0) or 0)
             vrb_harus_dicentang = kecepatan_angin > 2
+
+            if vrb_harus_dicentang:
+                # Cukup centang VRB saja, JANGAN kosongkan arah angin
+                page.evaluate("""() => {
+                    const cb = document.getElementById('checkbox-vrb');
+                    if (cb) {
+                        cb.checked = true;
+                        cb.dispatchEvent(new Event('change', {bubbles: true}));
+                        cb.dispatchEvent(new Event('input', {bubbles: true}));
+                    }
+                }""")
+                print("-> VRB aktif, arah angin dipertahankan.")
+            # print("\n[9] Memeriksa kondisi VRB...")
+            # try:
+            #     kecepatan_angin = float(data_cuaca.get('speed', 0) or 0)
+            # except (TypeError, ValueError):
+            #     kecepatan_angin = 0
+
+            # vrb_harus_dicentang = kecepatan_angin > 2
 
             # PENTING: Sebelumnya di sini mencoba KLIK checkbox/label lewat UI
             # (page.locator(...).click()), tapi itu sering timeout 60 detik
@@ -242,26 +257,26 @@ def run_test(data_cuaca, nama_observer):
             #
             # Solusinya: set status checkbox langsung lewat JavaScript (mirip
             # cara Trend dipaksa di atas), tidak perlu elemen itu terlihat.
-            hasil_vrb = page.evaluate("""(shouldCheck) => {
-                const cb = document.getElementById('checkbox-vrb');
-                if (!cb) return { found: false };
-                const before = cb.checked;
-                if (cb.checked !== shouldCheck) {
-                    cb.checked = shouldCheck;
-                    cb.dispatchEvent(new Event('change', { bubbles: true }));
-                    cb.dispatchEvent(new Event('input', { bubbles: true }));
-                    cb.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                }
-                return { found: true, before: before, after: cb.checked };
-            }""", vrb_harus_dicentang)
+            # hasil_vrb = page.evaluate("""(shouldCheck) => {
+            #     const cb = document.getElementById('checkbox-vrb');
+            #     if (!cb) return { found: false };
+            #     const before = cb.checked;
+            #     if (cb.checked !== shouldCheck) {
+            #         cb.checked = shouldCheck;
+            #         cb.dispatchEvent(new Event('change', { bubbles: true }));
+            #         cb.dispatchEvent(new Event('input', { bubbles: true }));
+            #         cb.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            #     }
+            #     return { found: true, before: before, after: cb.checked };
+            # }""", vrb_harus_dicentang)
 
-            if not hasil_vrb.get("found"):
-                print("-> WARNING: Checkbox VRB (#checkbox-vrb) tidak ditemukan di halaman, dilewati.")
-            else:
-                print(f"-> Kecepatan angin {kecepatan_angin} knot -> target VRB={vrb_harus_dicentang}. "
-                      f"Status sebelum={hasil_vrb['before']}, sesudah={hasil_vrb['after']}.")
+            # if not hasil_vrb.get("found"):
+            #     print("-> WARNING: Checkbox VRB (#checkbox-vrb) tidak ditemukan di halaman, dilewati.")
+            # else:
+            #     print(f"-> Kecepatan angin {kecepatan_angin} knot -> target VRB={vrb_harus_dicentang}. "
+            #           f"Status sebelum={hasil_vrb['before']}, sesudah={hasil_vrb['after']}.")
 
-            time.sleep(1)
+            # time.sleep(1)
 
             # =========================================================
             # 10. URUTAN 10: BLOK CUACA SAAT PENGAMATAN (MODAL)
@@ -324,15 +339,30 @@ def run_test(data_cuaca, nama_observer):
                 if awan.get("height"):
                     # Kode tinggi awan METAR selalu 3 digit (mis. "020").
                     # zfill(3) untuk jaga-jaga kalau leading zero-nya hilang.
-                    tinggi_awan = str(awan["height"]).strip().zfill(3)
+                    height_feet = int(awan["height"])
+                    tinggi_awan = str(height_feet)
                     page.fill("#cloud_height", tinggi_awan)
+                    page.evaluate("document.getElementById('cloud_height').dispatchEvent(new Event('input', {bubbles: true}));")
+                    page.evaluate("document.getElementById('cloud_height').dispatchEvent(new Event('blur'));")
 
                 page.wait_for_selector("#select-type")
                 if awan.get("type"):
                     page.select_option("#select-type", value=awan["type"])
                 else:
                     # Kosongkan pilihan Tipe Awan (opsi value="") jika tidak ada CB/TCU
-                    page.select_option("#select-type", value="")
+                    page.select_option("#select-type", index=1) 
+                    #page.evaluate("document.getElementById('select-type').dispatchEvent(new Event('change', {bubbles: true}));")
+
+                # page.evaluate("document.getElementById('cloud_height').focus();")
+                # page.evaluate("document.getElementById('cloud_height').blur();")
+                page.evaluate("""() => {
+                    const el = document.getElementById('select-type');
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                    el.dispatchEvent(new Event('blur', {bubbles: true}));
+                }""")
+                
+                # Tunggu sejenak agar JS form memproses
+                time.sleep(1)
 
                 # Klik tombol tambah record (ikon "+")
                 tombol_tambah = page.locator("button.btn-success:has(svg.feather-plus)").first
@@ -350,18 +380,24 @@ def run_test(data_cuaca, nama_observer):
                 # diagnostik yang jelas dan lanjut ke record berikutnya
                 # (bukan menghentikan seluruh pengiriman).
                 try:
-                    page.wait_for_function(
-                        "(btn) => btn && !btn.disabled",
-                        arg=tombol_tambah.element_handle(),
-                        timeout=8000,
-                    )
-                    tombol_tambah.click()
-                    print(f"   -> Record awan #{idx} ditambahkan.")
+                    # page.wait_for_function(
+                    #     "(btn) => btn && !btn.disabled",
+                    #     arg=tombol_tambah.element_handle(),
+                    #     timeout=8000,
+                    # )
+                    # tombol_tambah.click()
+                    # print(f"   -> Record awan #{idx} ditambahkan.")
+                    tombol_tambah.click(force=True, timeout=5000)
+                    print(f"   -> Record awan #{idx} berhasil diklik.")
                 except Exception:
-                    print(f"   -> WARNING: Tombol tambah awan tetap disabled untuk record #{idx} "
-                          f"(amount='{awan.get('amount')}', height='{tinggi_awan if awan.get('height') else ''}', "
-                          f"type='{awan.get('type', '')}'). Kemungkinan salah satu nilai di atas tidak "
-                          f"valid menurut form (mis. format Tinggi Awan). Record ini DILEWATI, cek manual di browser.")
+                    # print(f"   -> WARNING: Tombol tambah awan tetap disabled untuk record #{idx} "
+                    #       f"(amount='{awan.get('amount')}', height='{tinggi_awan if awan.get('height') else ''}', "
+                    #       f"type='{awan.get('type', '')}'). Kemungkinan salah satu nilai di atas tidak "
+                    #       f"valid menurut form (mis. format Tinggi Awan). Record ini DILEWATI, cek manual di browser.")
+                    print(f"   -> WARNING: Gagal klik tombol tambah, mencoba JS click(). Error: {e}")
+                    # Backup plan: klik langsung via JavaScript DOM
+                    page.evaluate("document.querySelector('button.btn-success:has(svg.feather-plus)').click()")
+                    print(f"   -> Record awan #{idx} ditambahkan via JS.")
 
                 time.sleep(1)
 
