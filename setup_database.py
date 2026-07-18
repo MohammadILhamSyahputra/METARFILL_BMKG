@@ -35,6 +35,11 @@ def create_database():
     """)
 
     # TABEL Parsing Result
+    # Catatan perubahan dari versi sebelumnya:
+    # - cloud_cover / cloud_height / cloud_type DIPINDAH ke tabel Awan (karena
+    #   satu observasi bisa punya sampai 3 record awan sekaligus)
+    # - Ditambahkan kolom untuk Cuaca Saat Pengamatan (5 kelompok radio button)
+    #   dan Cuaca yang Lalu (recent weather)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS Parsing_Result (
         id_parsing INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,17 +50,22 @@ def create_database():
         wind_gust TEXT,                    -- input#wind_gust
         wind_dir_min TEXT,                 -- input#winds-wd-dn
         wind_dir_max TEXT,                 -- input#winds-wd-dx
+        wind_vrb INTEGER DEFAULT 0,        -- checkbox#checkbox-vrb (1 = tercentang, otomatis jika speed > 2 knot)
 
         visibility_prevailing TEXT,        -- input#input-prevailing
         visibility_minimum TEXT,           -- input#input-minimum
 
-        cloud_cover TEXT,                  -- select#clouds-jumlah (FEW, SCT, BKN, OVC)
-        cloud_height TEXT,                 -- input#cloud_height
-        cloud_type TEXT,                   -- select#select-type (CB, TCU)
         vertical_vis TEXT,                 -- input#clouds-vertical-vis
 
+        -- Cuaca Saat Pengamatan (modal "button-weather")
         weather_intensity TEXT,            -- radio-intensity ("", "-", "+", "VC")
-        weather_descriptor TEXT,           -- radio-descriptor ("TS", "SH", "MI", dll)
+        weather_descriptor TEXT,           -- radio-descriptor ("", "MI","PR","BC","DR","BL","SH","TS","FZ")
+        weather_precipitation TEXT,        -- radio-precipitation ("DZ","RA","SN","SG","IC","PE","GR","GS","UP")
+        weather_obscuration TEXT,          -- radio-obscuration ("BR","FG","FU","VA","DU","SA","HZ")
+        weather_other TEXT,                -- radio-other ("PO","SQ","FC","SS","DS")
+
+        -- Cuaca yang Lalu
+        recent_weather TEXT,               -- select#recent-w-1
 
         temperature TEXT,                  -- input#v-air-temp
         dewpoint TEXT,                     -- input#v-dew-point
@@ -64,6 +74,21 @@ def create_database():
         trend TEXT,                        -- select[data-v-1010a25b]#input-type (Trend)
 
         FOREIGN KEY (id_metar) REFERENCES METAR(id_metar) ON DELETE CASCADE
+    )
+    """)
+
+    # TABEL Awan (baru)
+    # Satu Parsing_Result bisa punya 1-3 record awan (jumlah awan, tinggi awan, tipe awan).
+    # urutan = 1, 2, atau 3, menandakan record awan ke berapa yang diinput di form.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Awan (
+        id_awan INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_parsing INTEGER NOT NULL,
+        urutan INTEGER NOT NULL,           -- 1, 2, atau 3 (maksimal 3 record)
+        cloud_amount TEXT,                 -- select#clouds-jumlah (FEW, SCT, BKN, OVC)
+        cloud_height TEXT,                 -- input#cloud_height
+        cloud_type TEXT,                   -- select#select-type (CB, TCU)
+        FOREIGN KEY (id_parsing) REFERENCES Parsing_Result(id_parsing) ON DELETE CASCADE
     )
     """)
 
