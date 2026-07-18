@@ -67,11 +67,18 @@ def parse_metar(line):
     # & setup_database.py), jadi di sini kita tangkap SEMUA layer awan yang
     # ada di kode METAR (maksimal 3 pertama) sebagai list 'clouds', termasuk
     # tipe awan (CB/TCU) kalau ada.
+    # CATATAN: sebelumnya height dikali 100 (mis. "020" -> "2000") dengan
+    # asumsi form ingin nilai feet penuh. Ternyata field "Tinggi Awan" di
+    # form BMKGSatu menolak nilai itu (tombol "+" Awan tetap disabled),
+    # jadi kemungkinan besar field itu memang minta KODE 3 digit METAR
+    # apa adanya (mis. "020"), bukan hasil konversi ke feet. Height di
+    # bawah ini TIDAK dikonversi lagi -- kalau ternyata form memang minta
+    # feet penuh, tinggal kembalikan `str(int(height) * 100)`.
     awan_matches = re.findall(r'(FEW|SCT|BKN|OVC)([0-9]{3})(CB|TCU)?', metar_code)
     hasil["clouds"] = [
         {
             "amount": amount,
-            "height": str(int(height) * 100),
+            "height": height,  # kode 3 digit apa adanya, mis. "020"
             "type": tipe or "",
         }
         for amount, height, tipe in awan_matches[:3]  # maksimal 3 record

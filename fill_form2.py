@@ -230,18 +230,36 @@ def run_test(data_cuaca, nama_observer):
 
             vrb_harus_dicentang = kecepatan_angin > 2
 
-            page.wait_for_selector("#checkbox-vrb")
-            vrb_checkbox = page.locator("#checkbox-vrb")
-            sudah_tercentang = vrb_checkbox.is_checked()
+            # PENTING: Sebelumnya di sini mencoba KLIK checkbox/label lewat UI
+            # (page.locator(...).click()), tapi itu sering timeout 60 detik
+            # dengan error "element is not visible" / "not stable". Ini
+            # karena form BMKGSatu tampaknya MENYEMBUNYIKAN toggle VRB begitu
+            # field arah angin (winds-direction) sudah diisi angka spesifik
+            # di langkah 8 -- VRB dan arah angin numerik memang saling
+            # eksklusif secara meteorologis. Karena elemen itu disembunyikan
+            # (bukan sekadar di luar viewport), Playwright tidak akan pernah
+            # menganggapnya "visible" sehingga klik lewat UI selalu gagal.
+            #
+            # Solusinya: set status checkbox langsung lewat JavaScript (mirip
+            # cara Trend dipaksa di atas), tidak perlu elemen itu terlihat.
+            hasil_vrb = page.evaluate("""(shouldCheck) => {
+                const cb = document.getElementById('checkbox-vrb');
+                if (!cb) return { found: false };
+                const before = cb.checked;
+                if (cb.checked !== shouldCheck) {
+                    cb.checked = shouldCheck;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    cb.dispatchEvent(new Event('input', { bubbles: true }));
+                    cb.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+                return { found: true, before: before, after: cb.checked };
+            }""", vrb_harus_dicentang)
 
-            if vrb_harus_dicentang and not sudah_tercentang:
-                vrb_checkbox.click()
-                print(f"-> Kecepatan angin {kecepatan_angin} knot (>2), VRB dicentang.")
-            elif not vrb_harus_dicentang and sudah_tercentang:
-                vrb_checkbox.click()
-                print(f"-> Kecepatan angin {kecepatan_angin} knot (<=2), VRB dilepas.")
+            if not hasil_vrb.get("found"):
+                print("-> WARNING: Checkbox VRB (#checkbox-vrb) tidak ditemukan di halaman, dilewati.")
             else:
-                print(f"-> Kecepatan angin {kecepatan_angin} knot, status VRB sudah sesuai (tidak diubah).")
+                print(f"-> Kecepatan angin {kecepatan_angin} knot -> target VRB={vrb_harus_dicentang}. "
+                      f"Status sebelum={hasil_vrb['before']}, sesudah={hasil_vrb['after']}.")
 
             time.sleep(1)
 
@@ -304,7 +322,10 @@ def run_test(data_cuaca, nama_observer):
 
                 page.wait_for_selector("#cloud_height")
                 if awan.get("height"):
-                    page.fill("#cloud_height", str(awan["height"]))
+                    # Kode tinggi awan METAR selalu 3 digit (mis. "020").
+                    # zfill(3) untuk jaga-jaga kalau leading zero-nya hilang.
+                    tinggi_awan = str(awan["height"]).strip().zfill(3)
+                    page.fill("#cloud_height", tinggi_awan)
 
                 page.wait_for_selector("#select-type")
                 if awan.get("type"):
@@ -314,12 +335,33 @@ def run_test(data_cuaca, nama_observer):
                     page.select_option("#select-type", value="")
 
                 # Klik tombol tambah record (ikon "+")
-                tombol_tambah = page.locator("button.btn-success:has(svg.feather-plus)")
-                if tombol_tambah.count() > 0:
-                    tombol_tambah.first.click()
-                    print(f"   -> Record awan #{idx} ditambahkan.")
-                else:
+                tombol_tambah = page.locator("button.btn-success:has(svg.feather-plus)").first
+                if tombol_tambah.count() == 0:
                     print(f"   -> WARNING: Tombol tambah awan tidak ditemukan untuk record #{idx}.")
+                    continue
+
+                # PENTING: sebelumnya langsung .click() tanpa mengecek status
+                # disabled-nya tombol. Kalau form menganggap salah satu isian
+                # (biasanya 'Tinggi Awan') tidak valid, tombolnya tetap
+                # disabled dan Playwright menunggu sampai timeout 60 detik
+                # baru melempar error, menghentikan seluruh proses kirim.
+                # Sekarang kita tunggu maksimal 8 detik saja untuk tombolnya
+                # menjadi enabled; kalau tetap disabled, kasih pesan
+                # diagnostik yang jelas dan lanjut ke record berikutnya
+                # (bukan menghentikan seluruh pengiriman).
+                try:
+                    page.wait_for_function(
+                        "(btn) => btn && !btn.disabled",
+                        arg=tombol_tambah.element_handle(),
+                        timeout=8000,
+                    )
+                    tombol_tambah.click()
+                    print(f"   -> Record awan #{idx} ditambahkan.")
+                except Exception:
+                    print(f"   -> WARNING: Tombol tambah awan tetap disabled untuk record #{idx} "
+                          f"(amount='{awan.get('amount')}', height='{tinggi_awan if awan.get('height') else ''}', "
+                          f"type='{awan.get('type', '')}'). Kemungkinan salah satu nilai di atas tidak "
+                          f"valid menurut form (mis. format Tinggi Awan). Record ini DILEWATI, cek manual di browser.")
 
                 time.sleep(1)
 
