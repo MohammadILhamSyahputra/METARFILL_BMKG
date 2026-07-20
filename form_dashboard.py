@@ -7,12 +7,13 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView,
     QMessageBox, QDateEdit
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QFont
 
 from auth_utils import get_db_path
 from session_worker import SessionUpdateWorker
-from parser import parse_metar, simpan_ke_db
+from metar_fetch_worker import MetarFetchWorker
+from parser import parse_metar, simpan_ke_db, proses_data_untuk_tanggal
 import requests
 from datetime import datetime
 
@@ -176,7 +177,7 @@ class DashboardApp(QMainWindow):
         card_terakhir.setStyleSheet("background-color: #5B9E63; border-radius: 12px; border: none;")
         layout_c1 = QVBoxLayout(card_terakhir)
         layout_c1.setContentsMargins(15, 12, 15, 12)
-        lbl_c1_title = QLabel("Data Terakhir (Jam)")
+        lbl_c1_title = QLabel("Data Terakhir (Jam) Hari Ini")
         lbl_c1_title.setStyleSheet("color: #E2E2E2; font-weight: bold; font-size: 11px;")
         
         # PERBAIKAN: Menggunakan self. agar bisa di-update dari database
@@ -202,7 +203,7 @@ class DashboardApp(QMainWindow):
         card_jumlah.setStyleSheet("background-color: #79A9BF; border-radius: 12px; border: none;")
         layout_c3 = QVBoxLayout(card_jumlah)
         layout_c3.setContentsMargins(15, 12, 15, 12)
-        lbl_c3_title = QLabel("Jumlah Data")
+        lbl_c3_title = QLabel("Jumlah Semua Data METAR")
         lbl_c3_title.setStyleSheet("color: #E2E2E2; font-weight: bold; font-size: 11px;")
         
         # PERBAIKAN: Menggunakan self. agar bisa di-update dari database
@@ -313,7 +314,11 @@ class DashboardApp(QMainWindow):
             """)
         
         # 3. Tombol Pengeksekusi
-        btn_ambil_data = QPushButton("Ambil Data Baru")
+        # PERBAIKAN: disimpan sebagai self.btn_ambil_data (bukan variabel
+        # lokal) agar bisa di-disable/enable dari ambil_data_tanggal() saat
+        # proses fetch di background sedang berjalan (mencegah klik dobel).
+        self.btn_ambil_data = QPushButton("Ambil Data Baru")
+        btn_ambil_data = self.btn_ambil_data
         btn_ambil_data.setFixedWidth(150)
         btn_ambil_data.setStyleSheet("""
             QPushButton {
@@ -397,14 +402,38 @@ class DashboardApp(QMainWindow):
 
         # Hubungkan Sinyal & Aksi Tombol
         self.menu_group.idClicked.connect(self.handle_menu_click)
-        btn_ambil_data.clicked.connect(self.refresh_table)
-        self.load_data_to_table()
-        
+        # PENTING: tombol "Ambil Data Baru" sekarang memanggil ambil_data_tanggal()
+        # (metode per-tanggal, dibaca dari self.input_ambil_data / datepicker),
+        # bukan lagi refresh_table() versi lama yang selalu menyapu 1 bulan penuh.
+        btn_ambil_data.clicked.connect(self.ambil_data_tanggal)
+
         # TAMBAHKAN BARIS INI: Pemicu awal agar status sesi langsung terdeteksi
         self.update_info_status_sesi()
-        self.update_info_cards_from_db()
 
-    def load_data_to_table(self):
+        # Default saat aplikasi dibuka: self.input_ambil_data sudah otomatis
+        # ter-set ke tanggal hari ini (lihat setDateTime(datetime.now()) di
+        # atas), jadi cukup panggil ambil_data_tanggal() -- ini akan fetch +
+        # simpan + tampilkan HANYA data hari ini, bukan riwayat sebulan penuh.
+        #
+        # PENTING: sebelumnya ambil_data_tanggal() dipanggil LANGSUNG di sini
+        # (di dalam __init__), sebelum window ini sempat ditampilkan sama
+        # sekali ke layar (window baru digambar setelah __init__ selesai dan
+        # .show() dipanggil oleh pemanggil, mis. login_page.py). Karena
+        # ambil_data_tanggal() melakukan request ke web BMKG yang bisa makan
+        # waktu, window terlihat seperti tidak terbuka/hang selama itu.
+        # Sekarang dijadwalkan lewat QTimer.singleShot(0, ...) supaya
+        # baru dijalankan SETELAH window ini tampil & event loop Qt mulai
+        # berjalan -- window langsung terlihat lebih dulu, baru fetch data
+        # berjalan di baliknya tanpa menutup/menyembunyikan window.
+        QTimer.singleShot(0, self.ambil_data_tanggal)
+
+    def load_data_to_table(self, tanggal_filter=None):
+        """
+        tanggal_filter: string 'YYYY-MM-DD' opsional. Kalau diisi, tabel
+        hanya menampilkan baris METAR untuk tanggal itu saja (sesuai skema
+        baru: per-tanggal). Kalau None, semua riwayat ditampilkan (dipakai
+        mis. oleh halaman Riwayat METAR terpisah, bukan Dashboard).
+        """
         db_path = get_db_path() # Pastikan fungsi ini tersedia
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -428,10 +457,17 @@ class DashboardApp(QMainWindow):
             FROM METAR m
             JOIN Parsing_Result p ON m.id_metar = p.id_metar
             LEFT JOIN Awan a1 ON a1.id_parsing = p.id_parsing AND a1.urutan = 1
+            {where_clause}
             ORDER BY m.tanggal_observasi DESC, m.waktu_observasi DESC
         """
-        
-        cursor.execute(query)
+
+        if tanggal_filter:
+            cursor.execute(
+                query.format(where_clause="WHERE m.tanggal_observasi = ?"),
+                (tanggal_filter,),
+            )
+        else:
+            cursor.execute(query.format(where_clause=""))
         rows = cursor.fetchall()
         conn.close()
 
@@ -454,49 +490,160 @@ class DashboardApp(QMainWindow):
             btn_detail.clicked.connect(lambda checked, data=row_data: self.buka_form_input(data[-1])) # Kirim ID metar
             self.table_widget.setCellWidget(row_idx, 8, btn_detail) # Kolom ke-8 adalah Aksi
 
-    def refresh_table(self):
-        # 1. Tambahkan indikator visual (opsional, untuk UX)
-        self.statusBar().showMessage("Mengambil data terbaru dari BMKG...")
-        QApplication.processEvents() # Agar UI tidak 'freeze' saat download
-        
-        try:
-            # 2. Ambil data dari BMKG
-            url = f"https://aviation.bmkg.go.id/latest/metar.php?i=ward&y={datetime.now().year}&m={datetime.now().month}"
-            response = requests.get(url, timeout=30) # Tambahkan timeout agar tidak hang
-            
-            if response.status_code == 200:
-                lines = response.text.splitlines()
-                metar_lines = [line for line in lines if "METAR WARD" in line]
-                
-                if not metar_lines:
-                    QMessageBox.warning(self, "Info", "Data METAR WARD tidak ditemukan di server.")
-                    return
+    def tampilkan_pesan(self, judul, pesan, jenis="info"):
+        """
+        Helper terpusat untuk SEMUA messagebox notifikasi di dashboard ini.
+        Sebelumnya sebagian messagebox dipanggil langsung lewat
+        QMessageBox.information()/.warning()/.critical() tanpa style
+        eksplisit, sehingga warna teksnya mengikuti tema sistem (tampak
+        putih/pudar dan susah dibaca di atas background terang). Sekarang
+        semua notifikasi lewat method ini supaya fontnya konsisten HITAM.
+        """
+        msg = QMessageBox(self)
+        msg.setWindowTitle(judul)
+        msg.setText(pesan)
+        if jenis == "success":
+            msg.setIcon(QMessageBox.Information)
+        elif jenis == "warning":
+            msg.setIcon(QMessageBox.Warning)
+        elif jenis == "error":
+            msg.setIcon(QMessageBox.Critical)
+        else:
+            msg.setIcon(QMessageBox.Information)
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
 
-                data_baru_ditemukan = False
-                
-                # 3. Looping semua baris untuk antisipasi jika ada data yang terlewat
-                for line in metar_lines:
-                    data = parse_metar(line)
-                    if data:
-                        status = simpan_ke_db(data, line) # Memanggil fungsi yang sudah kita perbaiki
-                        if status == "success":
-                            data_baru_ditemukan = True
-                
-                # 4. Refresh tampilan tabel
-                if data_baru_ditemukan:
-                    self.load_data_to_table()
-                    self.update_info_cards_from_db()
-                    QMessageBox.information(self, "Berhasil", "Data METAR baru berhasil diperbarui!")
-                else:
-                    QMessageBox.information(self, "Info", "Data sudah mutakhir (tidak ada data baru).")
-            else:
-                QMessageBox.critical(self, "Gagal", f"Gagal menghubungi server BMKG (Status: {response.status_code})")
-        
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Terjadi kesalahan: {str(e)}")
-        
-        finally:
-            self.statusBar().clearMessage()
+    def _tampilkan_loading(self, pesan="Mengambil data, mohon tunggu..."):
+        """
+        Messagebox loading NON-MODAL (pakai .show(), bukan .exec()) supaya
+        tidak memblokir kode di bawahnya, dan dijalankan sekarang bersama
+        MetarFetchWorker (proses fetch berjalan di thread terpisah) sehingga
+        window & messagebox ini tetap responsif selama proses berlangsung.
+
+        PERBAIKAN: sebelumnya pakai QMessageBox.NoButton (tanpa tombol sama
+        sekali). Ditambah beberapa sebelumnya fetch-nya masih berjalan di
+        main thread sehingga dialog ini ikut freeze -- gabungan dua hal itu
+        membuat notifikasi loading terkesan tidak bisa ditutup. Sekarang
+        proses fetch sudah dipindah ke background thread (MetarFetchWorker)
+        dan dialog ini diberi tombol "Tutup" eksplisit, jadi user bebas
+        menutupnya kapan saja; proses di background tetap lanjut berjalan
+        dan hasilnya tetap akan ditampilkan/disimpan setelah selesai.
+        """
+        self._msg_loading = QMessageBox(self)
+        self._msg_loading.setWindowTitle("Memproses")
+        self._msg_loading.setText(pesan)
+        self._msg_loading.setIcon(QMessageBox.Information)
+        self._msg_loading.setStandardButtons(QMessageBox.Close)
+        self._msg_loading.button(QMessageBox.Close).setText("Tutup")
+        self._msg_loading.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        self._msg_loading.show()
+        QApplication.processEvents()  # paksa Qt menggambar messagebox sebelum kerja berat dimulai
+
+    def _tutup_loading(self):
+        if getattr(self, "_msg_loading", None) is not None:
+            self._msg_loading.close()
+            self._msg_loading = None
+
+    def ambil_data_tanggal(self):
+        """
+        Method pengganti refresh_table() lama. Mengambil data METAR HANYA
+        untuk satu tanggal spesifik (dibaca dari self.input_ambil_data /
+        datepicker) lewat parser.proses_data_untuk_tanggal(), lalu
+        menampilkan hasilnya di tabel yang SUDAH DIFILTER ke tanggal itu
+        saja (bukan seluruh riwayat).
+
+        PERBAIKAN: proses fetch + parsing + simpan DB sebelumnya dipanggil
+        LANGSUNG di sini (blocking main thread sampai 30 detik). Sekarang
+        method ini hanya MENYALAKAN MetarFetchWorker (QThread terpisah) dan
+        langsung return -- window & semua notifikasi tetap responsif dan
+        bisa ditutup selama fetch berjalan di baliknya. Hasilnya ditangani
+        oleh _on_fetch_selesai() / _on_fetch_gagal() lewat sinyal.
+        """
+        # Cegah klik dobel: kalau ada fetch yang masih berjalan, abaikan
+        # panggilan baru sampai yang sebelumnya selesai.
+        if getattr(self, "_fetch_worker", None) is not None and self._fetch_worker.isRunning():
+            return
+
+        tanggal_qdate = self.input_ambil_data.date()
+        tahun = tanggal_qdate.year()
+        bulan = tanggal_qdate.month()
+        tanggal = tanggal_qdate.day()
+        self._label_tanggal_aktif = f"{tanggal:02d}-{bulan:02d}-{tahun}"
+        self._tanggal_filter_aktif = f"{tahun}-{str(bulan).zfill(2)}-{str(tanggal).zfill(2)}"
+
+        # Nonaktifkan tombol & datepicker sementara supaya user tidak
+        # memicu fetch baru di atas fetch yang masih berjalan.
+        self.btn_ambil_data.setEnabled(False)
+        self.input_ambil_data.setEnabled(False)
+
+        self._tampilkan_loading(f"Mengambil data METAR tanggal {self._label_tanggal_aktif}...")
+        self.statusBar().showMessage(f"Mengambil data METAR tanggal {self._label_tanggal_aktif}...")
+
+        self._fetch_worker = MetarFetchWorker(tahun, bulan, tanggal, parent=self)
+        self._fetch_worker.selesai.connect(self._on_fetch_selesai)
+        self._fetch_worker.gagal.connect(self._on_fetch_gagal)
+        self._fetch_worker.start()
+
+    def _selesaikan_fetch_ui(self):
+        """Bagian UI yang sama-sama perlu dijalankan baik saat fetch sukses
+        maupun gagal: tutup loading, hapus status bar, aktifkan lagi tombol
+        & datepicker."""
+        self._tutup_loading()
+        self.statusBar().clearMessage()
+        self.btn_ambil_data.setEnabled(True)
+        self.input_ambil_data.setEnabled(True)
+
+    def _on_fetch_selesai(self, ringkasan):
+        """Dipanggil lewat sinyal MetarFetchWorker.selesai saat fetch +
+        parsing + simpan DB berhasil (tanpa exception)."""
+        self._selesaikan_fetch_ui()
+
+        label_tanggal = self._label_tanggal_aktif
+
+        # Tampilkan tabel & kartu info HANYA untuk tanggal yang diminta
+        self.load_data_to_table(tanggal_filter=self._tanggal_filter_aktif)
+        self.update_info_cards_from_db()
+
+        if ringkasan["total_ditemukan"] == 0:
+            self.tampilkan_pesan(
+                "Info",
+                f"Data METAR WARD tidak ditemukan di server untuk tanggal {label_tanggal}.",
+                jenis="warning",
+            )
+        elif ringkasan["baru"] > 0:
+            self.tampilkan_pesan(
+                "Berhasil",
+                f"{ringkasan['baru']} data METAR baru berhasil disimpan untuk tanggal {label_tanggal}.\n"
+                f"({ringkasan['sudah_ada']} sudah ada sebelumnya, "
+                f"{ringkasan['gagal_parse']} gagal diparsing.)",
+                jenis="success",
+            )
+        else:
+            self.tampilkan_pesan(
+                "Info",
+                f"Data sudah mutakhir untuk tanggal {label_tanggal} (tidak ada data baru).",
+                jenis="info",
+            )
+
+    def _on_fetch_gagal(self, pesan_error):
+        """Dipanggil lewat sinyal MetarFetchWorker.gagal kalau ada exception
+        (mis. gagal koneksi ke server BMKG) saat fetch berjalan."""
+        self._selesaikan_fetch_ui()
+        self.tampilkan_pesan(
+            "Error", f"Terjadi kesalahan saat mengambil data: {pesan_error}", jenis="error"
+        )
+
+    def closeEvent(self, event):
+        """
+        Pastikan MetarFetchWorker (kalau masih berjalan) dihentikan dengan
+        rapi saat window ditutup/logout, supaya tidak muncul crash/warning
+        "QThread: Destroyed while thread is still running".
+        """
+        worker = getattr(self, "_fetch_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.quit()
+            worker.wait(2000)
+        super().closeEvent(event)
 
     # def buka_form_input(self, data):
     #     from form_input import MetarApp # Pastikan nama kelasnya sama
@@ -564,15 +711,13 @@ class DashboardApp(QMainWindow):
     def perbarui_sesi_login(self):
         self.menu_group.button(0).setChecked(True)
 
-        # Menggunakan objek QMessageBox kustom agar font hitam tegas
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Perbarui Sesi Login")
-        msg.setIcon(QMessageBox.Information)
-        msg.setText("Browser akan terbuka untuk login BMKGSatu.\n\n"
-                    "Silakan login secara manual, lalu klik tombol 'Resume' atau 'F8' pada "
-                    "jendela Playwright Inspector agar sesi login tersimpan.")
-        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
-        msg.exec()
+        self.tampilkan_pesan(
+            "Perbarui Sesi Login",
+            "Browser akan terbuka untuk login BMKGSatu.\n\n"
+            "Silakan login secara manual, lalu klik tombol 'Resume' atau 'F8' pada "
+            "jendela Playwright Inspector agar sesi login tersimpan.",
+            jenis="info",
+        )
 
         self.session_worker = SessionUpdateWorker()
         self.session_worker.selesai.connect(self.on_sesi_login_selesai)
@@ -590,17 +735,9 @@ class DashboardApp(QMainWindow):
             self.lbl_status_sesi.setStyleSheet("color: #FFD2D2; font-weight: bold; font-size: 26px; margin-top: 5px;")
 
     def on_sesi_login_selesai(self, sukses, pesan):
-        msg = QMessageBox(self)
-        if sukses:
-            msg.setWindowTitle("Berhasil")
-            msg.setIcon(QMessageBox.Information)
-        else:
-            msg.setWindowTitle("Gagal") 
-            msg.setIcon(QMessageBox.Critical)
-            
-        msg.setText(pesan)
-        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
-        msg.exec()
+        judul = "Berhasil" if sukses else "Gagal"
+        jenis = "success" if sukses else "error"
+        self.tampilkan_pesan(judul, pesan, jenis=jenis)
 
     def update_info_status_sesi(self):
         """Fungsi untuk memeriksa apakah file session Playwright aktif/ada"""

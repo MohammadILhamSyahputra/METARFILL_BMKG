@@ -1,11 +1,118 @@
 import requests
+from bs4 import BeautifulSoup
+import pandas as pd
 from datetime import datetime
 import re
 from fill_form2 import run_test # Import fungsi dari file di atas
 from auth_utils import get_db_path
 import sqlite3
 
-def parse_metar(line):
+
+# PERCEPATAN: Session HTTP dipakai bersama (module-level) supaya koneksi
+# TCP/TLS ke aviation.bmkg.go.id bisa di-reuse (keep-alive) antar
+# pemanggilan ambil_data_metar_bmkg(), bukan buka koneksi baru dari nol
+# setiap kali tombol "Ambil Data Baru" diklik dalam satu sesi aplikasi.
+_bmkg_session = requests.Session()
+_bmkg_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+})
+
+
+# =============================================================================
+# AMBIL DATA METAR PER-TANGGAL (fetch + filter langsung dari web BMKG)
+# =============================================================================
+# CATATAN: test_input.py HANYA contoh/referensi cara ambil data per-tanggal,
+# BUKAN bagian dari aplikasi ini (tidak di-import di mana pun oleh
+# form_dashboard.py). Jadi logic-nya di-duplikasi & disesuaikan di sini
+# sebagai fungsi mandiri milik parser.py, supaya parser.py tidak bergantung
+# ke file percobaan/testing di luar alur aplikasi.
+def ambil_data_metar_bmkg(tahun, bulan, tanggal):
+    """
+    Fetch halaman METAR BMKG untuk 1 bulan, lalu filter HANYA baris yang
+    diawali tanggal spesifik (format 'DD/MM/YYYY') yang diminta.
+    Mengembalikan DataFrame dengan kolom ['Waktu (UTC)', 'Data METAR'],
+    atau None kalau gagal konek / tidak ada data untuk tanggal itu.
+    """
+    stasiun = "ward"
+
+    # Menghilangkan angka 0 di depan bulan untuk URL (misal "02" jadi "2")
+    bulan_url = str(int(bulan))
+    url = f"https://aviation.bmkg.go.id/latest/metar.php?i={stasiun}&y={tahun}&m={bulan_url}"
+
+    print(f"\nMencoba mengunduh data dari: {url}")
+
+    try:
+        # PERCEPATAN: pakai _bmkg_session (bukan requests.get() baru setiap
+        # kali) supaya koneksi HTTP bisa di-reuse antar pemanggilan.
+        response = _bmkg_session.get(url, timeout=30)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f" Gagal terhubung ke server BMKG: {e}")
+        return None
+
+    # PERCEPATAN: coba pakai parser 'lxml' (jauh lebih cepat dari
+    # 'html.parser' bawaan Python) kalau library-nya sudah terpasang.
+    # Kalau belum ada (ImportError), otomatis fallback ke 'html.parser'
+    # seperti sebelumnya -- jadi tetap jalan walau lxml tidak diinstall.
+    try:
+        soup = BeautifulSoup(response.text, 'lxml')
+    except Exception:
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+    # PERCEPATAN: sebelumnya soup.get_text() dipanggil untuk SELURUH
+    # halaman (header, menu navigasi, footer, script, dst), padahal data
+    # METAR-nya sendiri ada di dalam SATU blok teks preformatted (<pre>).
+    # Kalau blok <pre> ditemukan, ambil teksnya langsung -- jauh lebih
+    # ringan karena tidak perlu menggabungkan teks dari seluruh node HTML
+    # di halaman. Kalau strukturnya berubah dan <pre> tidak ada, tetap
+    # fallback ke get_text() seluruh halaman seperti semula agar tidak
+    # rusak.
+    blok_pre = soup.find('pre')
+    teks_halaman = blok_pre.get_text() if blok_pre is not None else soup.get_text()
+
+    # Pecah teks menjadi baris-baris terpisah
+    baris_teks = teks_halaman.split('\n')
+
+    # Format tanggal pencarian (harus 2 digit, misal: "07/02/2026")
+    tanggal_str = str(tanggal).zfill(2)
+    bulan_str = str(bulan).zfill(2)
+    tahun_str = str(tahun)
+    target_format_tanggal = f"{tanggal_str}/{bulan_str}/{tahun_str}"
+
+    records = []
+
+    for baris in baris_teks:
+        baris = baris.strip()
+
+        # Cek apakah baris tersebut diawali oleh tanggal yang dicari
+        if baris.startswith(target_format_tanggal):
+            # Menggunakan regex untuk memisahkan Waktu (kolom pertama) dengan Data METAR (sisanya)
+            # Pola ini memisah berdasarkan tab atau spasi beruntun yang memisahkan tanggal dan kode SAID
+            match = re.split(r'\t|\s{2,}', baris, maxsplit=1)
+
+            if len(match) == 2:
+                waktu_utc = match[0].strip()
+                data_metar = match[1].strip()
+                records.append([waktu_utc, data_metar])
+            elif len(match) == 1:
+                # Jika pemisahnya spasi tunggal, kita coba pisahkan manual
+                # Ambil 20 karakter pertama untuk Waktu ("DD/MM/YYYY HH:MM:SSZ")
+                waktu_utc = baris[:20].strip()
+                data_metar = baris[20:].strip()
+                records.append([waktu_utc, data_metar])
+
+    if not records:
+        print(f" [Info] Tidak ditemukan baris data yang berawalan tanggal {target_format_tanggal} di halaman web.")
+        return None
+
+    # Membuat DataFrame Pandas dari baris yang berhasil difilter
+    header = ["Waktu (UTC)", "Data METAR"]
+    df_terfilter = pd.DataFrame(records, columns=header)
+
+    return df_terfilter
+
+
+def parse_metar(line, tahun=None, bulan=None):
     if "METAR" not in line: return None
     metar_code = line.split("METAR")[1].strip()
     parts = line.split("METAR")[1].strip().split()
@@ -29,8 +136,18 @@ def parse_metar(line):
     }
 
     now = datetime.now()
-    hasil["full_date"] = f"{now.year}-{str(now.month).zfill(2)}-{day.zfill(2)}"
-    hasil["label_date"] = f"{now.month}/{int(day)}/{now.year}"
+    # PENTING: sebelumnya full_date SELALU memakai now.year/now.month (bulan
+    # & tahun SAAT SCRIPT DIJALANKAN). Ini salah kalau pengguna sedang minta
+    # data tanggal di bulan/tahun yang berbeda lewat datepicker (mis. minta
+    # data 28 Januari padahal aplikasi dibuka di bulan Juli) -- datanya akan
+    # tersimpan dengan tanggal yang salah. Sekarang tahun/bulan bisa
+    # di-override oleh pemanggil (proses_data_untuk_tanggal); day tetap
+    # diambil dari kode METAR itu sendiri (field paling akurat untuk hari
+    # observasi).
+    tahun_final = tahun if tahun else now.year
+    bulan_final = bulan if bulan else now.month
+    hasil["full_date"] = f"{tahun_final}-{str(bulan_final).zfill(2)}-{day.zfill(2)}"
+    hasil["label_date"] = f"{bulan_final}/{int(day)}/{tahun_final}"
 
     # PENTING: sebelumnya key 'raw_metar' TIDAK PERNAH dimasukkan ke dict
     # hasil. Akibatnya, di simpan_ke_db(), `data.get('raw_metar', 'METAR WARD ...')`
@@ -98,15 +215,27 @@ def parse_metar(line):
         
     return hasil
 
-def simpan_ke_db(data, raw_line=None):
+def simpan_ke_db(data, raw_line=None, conn=None):
     """
     raw_line: parameter opsional berisi baris METAR mentah asli. Diterima
     agar kompatibel dengan pemanggilan simpan_ke_db(data, line) dari
     form_dashboard.py (tombol refresh). Jika tidak diberikan, akan
     memakai data['raw_metar'] yang sudah diisi oleh parse_metar().
+
+    conn: PERCEPATAN -- opsional, koneksi sqlite3 yang SUDAH DIBUKA dan
+    akan dikelola (commit & close) oleh PEMANGGIL. Dipakai oleh
+    proses_data_untuk_tanggal() supaya satu batch berisi banyak baris METAR
+    cukup memakai SATU koneksi, bukan buka+tutup koneksi baru untuk SETIAP
+    baris (yang sebelumnya jadi bottleneck utama saat data dalam satu
+    tanggal cukup banyak, mis. observasi tiap jam). Kalau conn=None (dipakai
+    mandiri, mis. dari _jalankan_fetch_manual), fungsi ini tetap buka &
+    tutup koneksinya sendiri seperti sebelumnya, jadi tetap kompatibel.
     """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+    kelola_koneksi_sendiri = conn is None
+    if kelola_koneksi_sendiri:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+
     cursor = conn.cursor()
 
     # Cek duplikat berdasarkan waktu dan tanggal
@@ -114,7 +243,8 @@ def simpan_ke_db(data, raw_line=None):
                    (f"{data['hour']}:{data['minute']}", data['full_date']))
     
     if cursor.fetchone():
-        conn.close()
+        if kelola_koneksi_sendiri:
+            conn.close()
         return "exists"
 
     # Prioritaskan raw_line jika diberikan langsung oleh pemanggil, jika
@@ -163,10 +293,82 @@ def simpan_ke_db(data, raw_line=None):
         )
     print(f"DEBUG PARSER: {len(daftar_awan)} record awan disimpan untuk id_parsing={id_parsing}")
 
-    conn.commit()
-    conn.close()
+    # PERCEPATAN: commit & close hanya dilakukan di sini kalau koneksinya
+    # dibuka sendiri oleh fungsi ini. Kalau conn dikirim oleh pemanggil
+    # (batch dari proses_data_untuk_tanggal), commit-nya dilakukan SEKALI
+    # oleh pemanggil setelah seluruh baris dalam batch selesai diproses --
+    # jauh lebih cepat daripada commit per baris. Perilaku duplikat-check
+    # tetap benar walau belum di-commit, karena baris yang baru di-INSERT
+    # tapi belum di-commit di koneksi yang sama tetap terlihat oleh query
+    # SELECT berikutnya di koneksi itu juga (read-your-own-writes).
+    if kelola_koneksi_sendiri:
+        conn.commit()
+        conn.close()
     print("Data lengkap berhasil disimpan ke database!")
     return "success"
+
+# =============================================================================
+# METODE BARU: AMBIL DATA PER-TANGGAL (bukan per-bulan lagi)
+# =============================================================================
+def proses_data_untuk_tanggal(tahun, bulan, tanggal):
+    """
+    Entry point utama yang dipanggil dari form_dashboard.py (baik saat
+    aplikasi pertama dibuka -- default tanggal hari ini -- maupun saat
+    tombol 'Ambil Data Baru' diklik dengan tanggal dari datepicker).
+
+    Alur:
+      1. Fetch + filter baris METAR untuk SATU tanggal spesifik lewat
+         ambil_data_metar_bmkg() (fungsi lokal di file ini, lihat di atas).
+      2. Setiap baris hasil filter di-parse_metar() dengan tahun/bulan
+         di-override sesuai tanggal yang diminta (bukan bulan berjalan).
+      3. Disimpan ke DB lewat simpan_ke_db() yang sudah otomatis cek
+         duplikat.
+
+    Return: dict ringkasan supaya form_dashboard.py tinggal menampilkan
+    pesan yang sesuai tanpa perlu tahu detail parsing/DB:
+        {
+            "total_ditemukan": jumlah baris METAR yang ketemu di web utk tanggal ini,
+            "baru":            jumlah yang baru berhasil disimpan,
+            "sudah_ada":       jumlah yang ternyata sudah ada di DB (duplikat),
+            "gagal_parse":     jumlah baris yang gagal di-parse_metar(),
+        }
+    """
+    ringkasan = {"total_ditemukan": 0, "baru": 0, "sudah_ada": 0, "gagal_parse": 0}
+
+    df = ambil_data_metar_bmkg(tahun, bulan, tanggal)
+    if df is None or df.empty:
+        return ringkasan
+
+    ringkasan["total_ditemukan"] = len(df)
+
+    # PERCEPATAN: satu koneksi DB dibuka di sini untuk SELURUH baris dalam
+    # batch ini (bisa belasan/puluhan baris per tanggal), lalu di-passing
+    # ke simpan_ke_db() supaya tidak buka+tutup koneksi baru di setiap
+    # baris. Commit juga dilakukan SEKALI di akhir (bukan per baris).
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        for _, baris in df.iterrows():
+            line = baris["Data METAR"]
+            data = parse_metar(line, tahun=tahun, bulan=bulan)
+
+            if not data:
+                ringkasan["gagal_parse"] += 1
+                print(f"   -> WARNING: Gagal parse baris: {line}")
+                continue
+
+            status = simpan_ke_db(data, line, conn=conn)
+            if status == "success":
+                ringkasan["baru"] += 1
+            elif status == "exists":
+                ringkasan["sudah_ada"] += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return ringkasan
+
 
 # --- PROSES UTAMA ---
 # PENTING: sebelumnya blok ini TIDAK dibungkus `if __name__ == "__main__":`,

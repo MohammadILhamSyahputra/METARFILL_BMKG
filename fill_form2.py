@@ -1,6 +1,7 @@
 # fill_form.py
 import os
 import time
+import threading
 from playwright.sync_api import sync_playwright
 
 
@@ -56,12 +57,25 @@ def run_test(data_cuaca, nama_observer):
     #     return
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(storage_state="auth_state.json")
-        page = context.new_page()
-        page.set_default_timeout(60000)
+        browser = None
+        # PERBAIKAN: flag ini di-set jadi True lewat event "disconnected" dari
+        # Playwright kalau observer menutup window browser SECARA MANUAL.
+        # threading.Event() dipakai (bukan variabel bool biasa) karena
+        # callback event Playwright dan loop tunggu di bawah perlu saling
+        # "lihat" perubahan status ini dengan aman.
+        ditutup_manual = threading.Event()
 
         try:
+            browser = p.chromium.launch(headless=False)
+            # PENTING: begitu observer menutup window browser manual (klik
+            # tombol X), event "disconnected" ini langsung terpicu -- dipakai
+            # nanti supaya loop tunggu 60 detik di bawah bisa langsung
+            # berhenti tanpa perlu menunggu sisa waktu habis.
+            browser.on("disconnected", lambda: ditutup_manual.set())
+
+            context = browser.new_context(storage_state="auth_state.json")
+            page = context.new_page()
+            page.set_default_timeout(60000)
 
             print("Membuka halaman form...")
             url = "https://bmkgsatu.bmkg.go.id/meteorologi/metarspeci"
@@ -435,16 +449,49 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(5)
             print("Pengiriman selesai.")
 
-            print("Observer memiliki waktu 60 detik untuk memeriksa data.")
-            time.sleep(60)
+            # PERBAIKAN: sebelumnya di sini pakai time.sleep(60) yang
+            # BLOCKING PENUH selama 60 detik apa pun yang terjadi -- kalau
+            # observer sudah selesai memeriksa data dan menutup browser
+            # manual lebih cepat, script tetap "diam" menunggu sisa 60
+            # detik sebelum baris kode berikutnya (browser.close() di
+            # finally) sempat jalan.
+            #
+            # Sekarang dipakai 2 kondisi sekaligus (mana yang lebih dulu
+            # terjadi):
+            #   1) Observer menutup window browser secara MANUAL -> event
+            #      "disconnected" (didaftarkan di atas) langsung men-set
+            #      ditutup_manual, loop di bawah berhenti seketika.
+            #   2) Observer tidak menutup apa pun -> loop berhenti sendiri
+            #      setelah genap 60 detik, lalu browser ditutup otomatis
+            #      lewat blok finally seperti sebelumnya.
+            batas_waktu_detik = 60
+            print(f"Observer memiliki waktu maksimal {batas_waktu_detik} detik untuk memeriksa data "
+                  f"-- atau tutup browser kapan saja untuk langsung lanjut tanpa menunggu.")
+
+            waktu_mulai = time.time()
+            while time.time() - waktu_mulai < batas_waktu_detik:
+                if ditutup_manual.is_set():
+                    print("-> Browser sudah ditutup manual oleh observer, tidak perlu menunggu sisa waktu.")
+                    break
+                time.sleep(0.5)
+            else:
+                print(f"-> Waktu {batas_waktu_detik} detik habis, browser akan ditutup otomatis.")
 
         except Exception as e:
             print(f"Terjadi error: {e}")
             raise e
 
         finally:
-            if browser:
-                browser.close()
+            # PERBAIKAN: kalau browser sudah ditutup manual oleh observer
+            # (ditutup_manual sudah ter-set), browser.close() TIDAK perlu
+            # dipanggil lagi -- koneksinya memang sudah putus. Tetap dibungkus
+            # try/except sebagai jaga-jaga kalau ada race condition kecil
+            # (mis. baru ditutup manual persis di tengah proses ini).
+            if browser and not ditutup_manual.is_set():
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":
