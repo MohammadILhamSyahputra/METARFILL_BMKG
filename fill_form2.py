@@ -237,46 +237,10 @@ def run_test(data_cuaca, nama_observer):
                     }
                 }""")
                 print("-> VRB aktif, arah angin dipertahankan.")
-            # print("\n[9] Memeriksa kondisi VRB...")
-            # try:
-            #     kecepatan_angin = float(data_cuaca.get('speed', 0) or 0)
-            # except (TypeError, ValueError):
-            #     kecepatan_angin = 0
+            else:
+                print("-> Kecepatan angin <= 2 knot, VRB tidak diaktifkan.")
 
-            # vrb_harus_dicentang = kecepatan_angin > 2
-
-            # PENTING: Sebelumnya di sini mencoba KLIK checkbox/label lewat UI
-            # (page.locator(...).click()), tapi itu sering timeout 60 detik
-            # dengan error "element is not visible" / "not stable". Ini
-            # karena form BMKGSatu tampaknya MENYEMBUNYIKAN toggle VRB begitu
-            # field arah angin (winds-direction) sudah diisi angka spesifik
-            # di langkah 8 -- VRB dan arah angin numerik memang saling
-            # eksklusif secara meteorologis. Karena elemen itu disembunyikan
-            # (bukan sekadar di luar viewport), Playwright tidak akan pernah
-            # menganggapnya "visible" sehingga klik lewat UI selalu gagal.
-            #
-            # Solusinya: set status checkbox langsung lewat JavaScript (mirip
-            # cara Trend dipaksa di atas), tidak perlu elemen itu terlihat.
-            # hasil_vrb = page.evaluate("""(shouldCheck) => {
-            #     const cb = document.getElementById('checkbox-vrb');
-            #     if (!cb) return { found: false };
-            #     const before = cb.checked;
-            #     if (cb.checked !== shouldCheck) {
-            #         cb.checked = shouldCheck;
-            #         cb.dispatchEvent(new Event('change', { bubbles: true }));
-            #         cb.dispatchEvent(new Event('input', { bubbles: true }));
-            #         cb.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            #     }
-            #     return { found: true, before: before, after: cb.checked };
-            # }""", vrb_harus_dicentang)
-
-            # if not hasil_vrb.get("found"):
-            #     print("-> WARNING: Checkbox VRB (#checkbox-vrb) tidak ditemukan di halaman, dilewati.")
-            # else:
-            #     print(f"-> Kecepatan angin {kecepatan_angin} knot -> target VRB={vrb_harus_dicentang}. "
-            #           f"Status sebelum={hasil_vrb['before']}, sesudah={hasil_vrb['after']}.")
-
-            # time.sleep(1)
+            time.sleep(1)
 
             # =========================================================
             # 10. URUTAN 10: BLOK CUACA SAAT PENGAMATAN (MODAL)
@@ -325,81 +289,142 @@ def run_test(data_cuaca, nama_observer):
             # =========================================================
             # 12. URUTAN 12: BLOK AWAN (MAKSIMAL 3 RECORD)
             # =========================================================
-            daftar_awan = data_cuaca.get("clouds", [])[:3]  # hard limit 3 record
+            daftar_awan = data_cuaca.get("clouds", [])[:3]
             print(f"\n[12] Mengisi Blok Awan ({len(daftar_awan)} record)...")
 
             for idx, awan in enumerate(daftar_awan, start=1):
                 print(f"   -> Record awan #{idx}: {awan}")
 
+                # 1. ISI FIELD LEWAT METHOD PLAYWRIGHT ASLI (bukan raw JS
+                #    el.value=...) -- fill()/select_option() Playwright
+                #    berinteraksi lebih mirip pengguna sungguhan dan biasanya
+                #    lebih reliable untuk sinkronisasi v-model Vue.
                 page.wait_for_selector("#clouds-jumlah")
                 if awan.get("amount"):
                     page.select_option("#clouds-jumlah", value=awan["amount"])
 
                 page.wait_for_selector("#cloud_height")
                 if awan.get("height"):
-                    # Kode tinggi awan METAR selalu 3 digit (mis. "020").
-                    # zfill(3) untuk jaga-jaga kalau leading zero-nya hilang.
-                    height_feet = int(awan["height"])
-                    tinggi_awan = str(height_feet)
+                    tinggi_awan = str(int(awan["height"]))
                     page.fill("#cloud_height", tinggi_awan)
-                    page.evaluate("document.getElementById('cloud_height').dispatchEvent(new Event('input', {bubbles: true}));")
-                    page.evaluate("document.getElementById('cloud_height').dispatchEvent(new Event('blur'));")
 
                 page.wait_for_selector("#select-type")
                 if awan.get("type"):
                     page.select_option("#select-type", value=awan["type"])
                 else:
-                    # Kosongkan pilihan Tipe Awan (opsi value="") jika tidak ada CB/TCU
-                    page.select_option("#select-type", index=1) 
-                    #page.evaluate("document.getElementById('select-type').dispatchEvent(new Event('change', {bubbles: true}));")
+                    page.select_option("#select-type", index=0)
 
-                # page.evaluate("document.getElementById('cloud_height').focus();")
-                # page.evaluate("document.getElementById('cloud_height').blur();")
-                page.evaluate("""() => {
-                    const el = document.getElementById('select-type');
-                    el.dispatchEvent(new Event('change', {bubbles: true}));
-                    el.dispatchEvent(new Event('blur', {bubbles: true}));
+                time.sleep(1)
+
+                # 2. SCOPE tabel Awan secara SPESIFIK (cari tabel yang benar-benar
+                #    mengandung #clouds-jumlah) -- bukan class generik "tbmetar"
+                #    yang kemungkinan dipakai di banyak tabel lain di halaman ini.
+                #    Sebelumnya pakai "table.tbmetar" yang salah scope, sehingga
+                #    hitungan baris "TERKONFIRMASI bertambah" ternyata FALSE
+                #    POSITIVE (baris yang bertambah dari tabel lain, bukan Awan).
+                tabel_awan = page.locator("table:has(#clouds-jumlah)")
+                jumlah_baris_sebelum = tabel_awan.locator("tbody tr").count()
+
+                # PENTING: tombol '+' di-scope ke tabel_awan, BUKAN ke seluruh
+                # halaman (page.locator(...)). Kalau di-scope ke page, dan ada
+                # tombol hijau bulat ber-ikon '+' lain di halaman ini (mis. di
+                # blok Present Weather / Recent Weather yang pakai style sama),
+                # ".first" bisa mengambil tombol yang SALAH -> klik "berhasil"
+                # tapi tidak menambah baris di tabel Awan, atau tombolnya malah
+                # tidak ter-klik sama sekali karena beda posisi/tersembunyi.
+                tombol_tambah = tabel_awan.locator("button.btn-success:has(svg.feather-plus)").first
+                tombol_tambah.scroll_into_view_if_needed()
+                is_disabled = tombol_tambah.evaluate(
+                    "(btn) => btn.disabled || btn.classList.contains('disabled')"
+                )
+
+                # 3. DIAGNOSTIK: jalan ke atas lewat Vue COMPONENT TREE ($parent,
+                #    bukan DOM parentElement) sampai 8 level, dump $data + computed
+                #    yang relevan di tiap level. Sebelumnya cuma jalan lewat DOM
+                #    tree dan berhenti di komponen <b-button> BootstrapVue sendiri
+                #    (cuma punya bvListeners/bvAttrs, bukan data awan yang asli).
+                diagnostik = tombol_tambah.evaluate("""(btn) => {
+                    const amount = document.getElementById('clouds-jumlah');
+                    const height = document.getElementById('cloud_height');
+                    const type = document.getElementById('select-type');
+                    const dasar = {
+                        amount_value: amount ? amount.value : null,
+                        height_value: height ? height.value : null,
+                        type_value: type ? type.value : null,
+                    };
+
+                    if (!btn || !btn.__vue__) return { dasar, found: false };
+
+                    const pola = /awan|cloud|jumlah|tinggi|tipe|height|amount|disabled|valid|record|row|type/i;
+                    let vm = btn.__vue__;
+                    const chain = [];
+                    let depth = 0;
+                    while (vm && depth < 8) {
+                        const dataKeys = Object.keys(vm.$data || {});
+                        const computedKeys = vm.$options.computed ? Object.keys(vm.$options.computed) : [];
+                        const propsKeys = Object.keys(vm.$props || {});
+
+                        const relevantData = {};
+                        dataKeys.forEach((k) => {
+                            if (pola.test(k)) {
+                                try { relevantData[k] = JSON.parse(JSON.stringify(vm[k])); }
+                                catch (e) { relevantData[k] = String(vm[k]); }
+                            }
+                        });
+                        const relevantComputed = {};
+                        computedKeys.forEach((k) => {
+                            if (pola.test(k)) {
+                                try { relevantComputed[k] = JSON.parse(JSON.stringify(vm[k])); }
+                                catch (e) { relevantComputed[k] = String(vm[k]); }
+                            }
+                        });
+                        const relevantProps = {};
+                        propsKeys.forEach((k) => {
+                            if (pola.test(k)) {
+                                try { relevantProps[k] = JSON.parse(JSON.stringify(vm[k])); }
+                                catch (e) { relevantProps[k] = String(vm[k]); }
+                            }
+                        });
+
+                        chain.push({
+                            depth: depth,
+                            componentName: (vm.$options && (vm.$options.name || vm.$options._componentTag)) || 'anonymous',
+                            dataKeys: dataKeys,
+                            computedKeys: computedKeys,
+                            relevantData: relevantData,
+                            relevantComputed: relevantComputed,
+                            relevantProps: relevantProps,
+                        });
+                        vm = vm.$parent;
+                        depth += 1;
+                    }
+                    return { dasar, found: true, chain };
                 }""")
-                
-                # Tunggu sejenak agar JS form memproses
-                time.sleep(1)
+                print(f"   -> Diagnostik field: {diagnostik}")
 
-                # Klik tombol tambah record (ikon "+")
-                tombol_tambah = page.locator("button.btn-success:has(svg.feather-plus)").first
-                if tombol_tambah.count() == 0:
-                    print(f"   -> WARNING: Tombol tambah awan tidak ditemukan untuk record #{idx}.")
-                    continue
-
-                # PENTING: sebelumnya langsung .click() tanpa mengecek status
-                # disabled-nya tombol. Kalau form menganggap salah satu isian
-                # (biasanya 'Tinggi Awan') tidak valid, tombolnya tetap
-                # disabled dan Playwright menunggu sampai timeout 60 detik
-                # baru melempar error, menghentikan seluruh proses kirim.
-                # Sekarang kita tunggu maksimal 8 detik saja untuk tombolnya
-                # menjadi enabled; kalau tetap disabled, kasih pesan
-                # diagnostik yang jelas dan lanjut ke record berikutnya
-                # (bukan menghentikan seluruh pengiriman).
-                try:
-                    # page.wait_for_function(
-                    #     "(btn) => btn && !btn.disabled",
-                    #     arg=tombol_tambah.element_handle(),
-                    #     timeout=8000,
-                    # )
-                    # tombol_tambah.click()
-                    # print(f"   -> Record awan #{idx} ditambahkan.")
-                    tombol_tambah.click(force=True, timeout=5000)
-                    print(f"   -> Record awan #{idx} berhasil diklik.")
-                except Exception:
-                    # print(f"   -> WARNING: Tombol tambah awan tetap disabled untuk record #{idx} "
-                    #       f"(amount='{awan.get('amount')}', height='{tinggi_awan if awan.get('height') else ''}', "
-                    #       f"type='{awan.get('type', '')}'). Kemungkinan salah satu nilai di atas tidak "
-                    #       f"valid menurut form (mis. format Tinggi Awan). Record ini DILEWATI, cek manual di browser.")
-                    print(f"   -> WARNING: Gagal klik tombol tambah, mencoba JS click(). Error: {e}")
-                    # Backup plan: klik langsung via JavaScript DOM
-                    page.evaluate("document.querySelector('button.btn-success:has(svg.feather-plus)').click()")
-                    print(f"   -> Record awan #{idx} ditambahkan via JS.")
+                if not is_disabled:
+                    tombol_tambah.click()
+                else:
+                    print(f"   -> Tombol masih disabled, mencoba paksa klik untuk record #{idx}...")
+                    tombol_tambah.evaluate("""(btn) => {
+                        btn.disabled = false;
+                        btn.removeAttribute('disabled');
+                        btn.classList.remove('disabled');
+                        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
+                        btn.dispatchEvent(clickEvent);
+                    }""")
 
                 time.sleep(1)
+
+                # 4. VERIFIKASI NYATA (scope benar ke tabel Awan)
+                jumlah_baris_sesudah = tabel_awan.locator("tbody tr").count()
+                if jumlah_baris_sesudah > jumlah_baris_sebelum:
+                    print(f"   -> Record awan #{idx} TERKONFIRMASI bertambah "
+                          f"({jumlah_baris_sebelum} -> {jumlah_baris_sesudah} baris di tabel Awan).")
+                else:
+                    print(f"   -> WARNING: Record awan #{idx} TIDAK bertambah "
+                          f"(tetap {jumlah_baris_sesudah} baris di tabel Awan). Record ini DILEWATI -- "
+                          f"kirim baris 'Diagnostik field' di atas supaya bisa dicari akar masalahnya.")
 
             if not daftar_awan:
                 print("-> Tidak ada data Awan, blok ini dilewati.")
@@ -461,5 +486,5 @@ if __name__ == "__main__":
             {"amount": "SCT", "height": "025", "type": "CB"},
         ],
     }
-
+    
     run_test(contoh_data_cuaca, nama_observer="Contoh Observer")
