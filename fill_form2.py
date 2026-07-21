@@ -257,6 +257,47 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(1)
 
             # =========================================================
+            # 9b. URUTAN 9b: CHECKBOX STATUS LAPORAN -- COR / NIL / AUTO (BARU)
+            # =========================================================
+            # PENTING/CATATAN: id CSS di bawah ('checkbox-cor', 'checkbox-nil',
+            # 'checkbox-auto') masih DUGAAN, mengikuti pola penamaan
+            # 'checkbox-vrb' yang sudah terbukti benar di langkah 9 di atas.
+            # Belum ada HTML asli formulir bagian ini untuk dipastikan --
+            # kalau observer melihat log WARNING "checkbox tidak ditemukan"
+            # di bawah, cek nama id sebenarnya di halaman (klik kanan ->
+            # Inspect Element di checkbox COR/NIL/AUTO) lalu sesuaikan.
+            print("\n[9b] Mengatur checkbox status laporan (COR/NIL/AUTO)...")
+
+            def _centang_checkbox_status(elemen_id, aktif, label):
+                if not aktif:
+                    return
+                ada = page.evaluate(
+                    "(id) => !!document.getElementById(id)", elemen_id
+                )
+                if not ada:
+                    print(f"   -> WARNING: checkbox '{elemen_id}' ({label}) tidak "
+                          f"ditemukan di halaman. Sesuaikan id-nya di fill_form2.py.")
+                    return
+                page.evaluate("""(id) => {
+                    const cb = document.getElementById(id);
+                    if (cb) {
+                        cb.checked = true;
+                        cb.dispatchEvent(new Event('change', {bubbles: true}));
+                        cb.dispatchEvent(new Event('input', {bubbles: true}));
+                    }
+                }""", elemen_id)
+                print(f"   -> Checkbox '{label}' dicentang.")
+
+            # Ketiganya (COR/NIL/AUTO) eksklusif satu sama lain di UI
+            # (form_input.py memakai QButtonGroup), jadi maksimal satu yang
+            # True di data_cuaca.
+            _centang_checkbox_status("checkbox-cor", data_cuaca.get("is_cor"), "COR")
+            _centang_checkbox_status("checkbox-nil", data_cuaca.get("is_nil"), "NIL")
+            _centang_checkbox_status("checkbox-auto", data_cuaca.get("is_auto"), "AUTO")
+
+            time.sleep(1)
+
+            # =========================================================
             # 10. URUTAN 10: BLOK CUACA SAAT PENGAMATAN (MODAL)
             # =========================================================
             print("\n[10] Mengisi Blok Cuaca Saat Pengamatan...")
@@ -267,21 +308,42 @@ def run_test(data_cuaca, nama_observer):
             )
 
             if ada_data_cuaca_saat_ini:
-                tombol_cuaca = page.locator("button.button-weather")
-                tombol_cuaca.click()
-                print("-> Modal Cuaca Saat Pengamatan dibuka.")
+                # PERBAIKAN: halaman ternyata punya BEBERAPA tombol dengan
+                # class "button-weather" sekaligus (kemungkinan slot cuaca
+                # w1/w2/w3, ditambah satu tombol lain yang disabled).
+                # page.locator("button.button-weather").click() sebelumnya
+                # mengharuskan hasilnya PERSIS SATU elemen (Playwright strict
+                # mode) -- begitu ada lebih dari satu match, langsung error
+                # "strict mode violation" alih-alih memilih salah satu.
+                #
+                # Sekarang: filter dulu yang TIDAK disabled, lalu ambil yang
+                # PERTAMA (asumsi itu slot cuaca w1, karena baru satu grup
+                # cuaca yang kita isi per observasi saat ini). Kalau nanti
+                # butuh isi lebih dari satu grup cuaca sekaligus, di sinilah
+                # tempatnya menambah loop ke slot w2/w3.
+                semua_tombol_cuaca = page.locator("button.button-weather")
+                jumlah_tombol = semua_tombol_cuaca.count()
+                print(f"   -> Ditemukan {jumlah_tombol} tombol 'button-weather' di halaman.")
 
-                # Modal BootstrapVue biasanya butuh sedikit waktu untuk animasi masuk
-                page.wait_for_selector("div[id*='__BVID__'][id*='modal_body']", state="visible")
-                modal = page.locator("div[id*='__BVID__'][id*='modal_body']")
+                tombol_cuaca = page.locator("button.button-weather:not([disabled])").first
+                if tombol_cuaca.count() == 0:
+                    print("   -> WARNING: Tidak ada tombol Cuaca Saat Pengamatan yang aktif "
+                          "(semua disabled?). Blok cuaca saat pengamatan dilewati.")
+                else:
+                    tombol_cuaca.click()
+                    print("-> Modal Cuaca Saat Pengamatan dibuka (slot pertama yang aktif).")
 
-                isi_radio_group(modal, "radio-intensity", data_cuaca.get("weather_intensity"))
-                isi_radio_group(modal, "radio-descriptor", data_cuaca.get("weather_descriptor"))
-                isi_radio_group(modal, "radio-precipitation", data_cuaca.get("weather_precipitation"))
-                isi_radio_group(modal, "radio-obscuration", data_cuaca.get("weather_obscuration"))
-                isi_radio_group(modal, "radio-other", data_cuaca.get("weather_other"))
+                    # Modal BootstrapVue biasanya butuh sedikit waktu untuk animasi masuk
+                    page.wait_for_selector("div[id*='__BVID__'][id*='modal_body']", state="visible")
+                    modal = page.locator("div[id*='__BVID__'][id*='modal_body']")
 
-                tutup_modal_cuaca(page)
+                    isi_radio_group(modal, "radio-intensity", data_cuaca.get("weather_intensity"))
+                    isi_radio_group(modal, "radio-descriptor", data_cuaca.get("weather_descriptor"))
+                    isi_radio_group(modal, "radio-precipitation", data_cuaca.get("weather_precipitation"))
+                    isi_radio_group(modal, "radio-obscuration", data_cuaca.get("weather_obscuration"))
+                    isi_radio_group(modal, "radio-other", data_cuaca.get("weather_other"))
+
+                    tutup_modal_cuaca(page)
                 time.sleep(1)
             else:
                 print("-> Tidak ada data Cuaca Saat Pengamatan, blok ini dilewati.")
@@ -501,6 +563,11 @@ if __name__ == "__main__":
         "full_date": "2026-07-09",
         "hour": "00",
         "minute": "00",
+
+        # Status laporan (BARU)
+        "is_cor": False,
+        "is_nil": False,
+        "is_auto": False,
 
         # Angin
         "direction": "090",

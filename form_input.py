@@ -338,6 +338,15 @@ class MetarApp(QMainWindow):
         self.input_kecepatan_angin = QLineEdit()
         angin_layout.addWidget(self.input_kecepatan_angin, 2, 1)
 
+        # BARU: checkbox_vrb_arah sebelumnya cuma widget dekoratif -- tidak
+        # ada kode yang pernah men-setChecked()-nya, jadi observer harus
+        # klik manual, padahal fill_form2.py sudah otomatis mencentang VRB
+        # di website BMKGSatu begitu kecepatan > 2 knot (lihat URUTAN 9 di
+        # fill_form2.py). Disamakan di sini: textChanged di-connect supaya
+        # checkbox ikut ter-update REAL-TIME persis seperti behaviour di
+        # website, setiap kali field kecepatan angin diisi/diedit.
+        self.input_kecepatan_angin.textChanged.connect(self._perbarui_checkbox_vrb)
+
         lbl_gust = QLabel("Gust")
         angin_layout.addWidget(lbl_gust, 3, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
@@ -694,6 +703,23 @@ class MetarApp(QMainWindow):
             self.parent_window.show() # Tampilkan kembali dashboard
         self.close()
 
+    def _perbarui_checkbox_vrb(self):
+        """
+        Menentukan status checkbox VRB berdasarkan kecepatan angin, PERSIS
+        mengikuti aturan yang sudah dipakai fill_form2.py saat mengisi
+        website BMKGSatu (kecepatan_angin > 2 knot -> VRB aktif). Dipanggil
+        otomatis tiap kali input_kecepatan_angin berubah (lihat
+        .textChanged.connect di atas), jadi checkbox di GUI ini selalu
+        sinkron dengan apa yang bakal terjadi di website tanpa observer
+        perlu klik manual.
+        """
+        teks_kecepatan = self.input_kecepatan_angin.text().strip()
+        try:
+            kecepatan_angin = float(teks_kecepatan) if teks_kecepatan else 0
+        except ValueError:
+            kecepatan_angin = 0
+        self.checkbox_vrb_arah.setChecked(kecepatan_angin > 2)
+
     def isi_data_ke_form(self):
         # Sesuaikan indeks [0], [1], dst dengan urutan query SELECT Anda di Dashboard
         # Contoh urutan data: waktu, arah, kec, vis, tinggi, temp, embun
@@ -723,6 +749,54 @@ class MetarApp(QMainWindow):
             print("TEXTBOX =", self.input_metar.text())
         else:
             print("DEBUG: 'raw_metar' tidak ditemukan / kosong pada data_metar yang dikirim ke form ini.")
+
+        # BARU: checklist COR/NIL/AUTO + field Cuaca Saat Pengamatan & Cuaca
+        # yang Lalu. Sebelumnya widget-widget ini (self.check_cor,
+        # self.check_nil, self.check_auto, self.input_cuaca_saat,
+        # self.combo_cuaca_lalu) ada di UI tapi TIDAK PERNAH diisi dari data
+        # -- selalu kosong/tidak tercentang berapa pun isi raw_metar-nya.
+        # Di-parse ulang dari raw_metar (bukan nambah kolom DB baru) lewat
+        # parse_metar() milik parser.py, supaya logikanya persis sama dengan
+        # yang dipakai backend fill_form2.py (satu sumber kebenaran).
+        self.check_cor.setChecked(False)
+        self.check_nil.setChecked(False)
+        self.check_auto.setChecked(False)
+        self.input_cuaca_saat.setText("")
+        self.combo_cuaca_lalu.setText("")
+
+        if raw_metar_value:
+            try:
+                from parser import parse_metar
+                parsed = parse_metar(str(raw_metar_value))
+            except Exception as e:
+                parsed = None
+                print(f"DEBUG: Gagal re-parse raw_metar untuk checklist COR/NIL/AUTO/cuaca: {e}")
+
+            if parsed:
+                # Status_group di UI bersifat eksklusif (COR/NIL/AUTO cuma
+                # boleh salah satu), jadi urutan prioritas: COR > NIL > AUTO
+                # kalau (secara tidak lazim) lebih dari satu flag menyala.
+                if parsed.get("is_cor"):
+                    self.check_cor.setChecked(True)
+                elif parsed.get("is_nil"):
+                    self.check_nil.setChecked(True)
+                elif parsed.get("is_auto"):
+                    self.check_auto.setChecked(True)
+
+                # Tampilkan ringkasan cuaca saat pengamatan sebagai teks
+                # (mis. "-TS RA" / "TS"), sesuai field bebas-teks yang ada
+                # di UI saat ini (self.input_cuaca_saat berupa QLineEdit).
+                bagian_cuaca_saat = [
+                    parsed.get("weather_intensity") or "",
+                    parsed.get("weather_descriptor") or "",
+                    parsed.get("weather_precipitation") or parsed.get("weather_obscuration") or parsed.get("weather_other") or "",
+                ]
+                teks_cuaca_saat = "".join(bagian_cuaca_saat).strip()
+                if teks_cuaca_saat:
+                    self.input_cuaca_saat.setText(teks_cuaca_saat)
+
+                if parsed.get("recent_weather"):
+                    self.combo_cuaca_lalu.setText(parsed["recent_weather"])
         
         # Waktu (Contoh: "05:30")
         waktu_str = d['waktu_observasi'] # Contoh: "06:00"
@@ -733,6 +807,11 @@ class MetarApp(QMainWindow):
         
         self.input_arah_angin.setText(str(d['wind_direction']))
         self.input_kecepatan_angin.setText(str(d['wind_speed']))
+        # Jaga-jaga: setText() di atas SEHARUSNYA sudah memicu textChanged
+        # -> _perbarui_checkbox_vrb() otomatis, tapi Qt tidak memicu sinyal
+        # kalau teks barunya kebetulan SAMA dengan teks sebelumnya. Panggil
+        # eksplisit di sini supaya checkbox VRB tetap benar walau begitu.
+        self._perbarui_checkbox_vrb()
         self.input_gust.setText(str(data_dict.get('wind_gust', '0')))
         self.input_arah_min.setText(str(d['wind_dir_min']))
         self.input_arah_max.setText(str(d['wind_dir_max']))
@@ -779,6 +858,43 @@ class MetarApp(QMainWindow):
                     "type": tipe.text().strip()
                 })
 
+        # BARU: baca ulang checklist COR/NIL/AUTO dari status_group (radio
+        # eksklusif) supaya observer bisa mengoreksi manual di form kalau
+        # perlu, lalu diteruskan ke fill_form2.py. Sebelumnya checklist ini
+        # tidak pernah dibaca sama sekali di sini, jadi backend TIDAK PERNAH
+        # tahu apakah laporan ini COR/NIL/AUTO.
+        is_cor = self.check_cor.isChecked()
+        is_nil = self.check_nil.isChecked()
+        is_auto = self.check_auto.isChecked()
+
+        # BARU: cuaca saat pengamatan (self.input_cuaca_saat) dibaca dari
+        # field bebas-teks di UI (mis. "-TS RA" / "TSRA"), lalu dipecah
+        # lewat ekstrak_cuaca() (parser.py) jadi key-key yang benar-benar
+        # dipakai isi_radio_group() di fill_form2.py: weather_intensity /
+        # weather_descriptor / weather_precipitation / weather_obscuration /
+        # weather_other. Sebelumnya field ini sama sekali tidak dibaca di
+        # proses_kirim(), jadi apa pun yang diisi/diedit observer di sini
+        # tidak pernah sampai ke fill_form2.py.
+        teks_cuaca_saat = self.input_cuaca_saat.text().strip()
+        try:
+            from parser import ekstrak_cuaca
+            hasil_cuaca_saat = ekstrak_cuaca(teks_cuaca_saat)
+        except Exception as e:
+            print(f"DEBUG: Gagal ekstrak_cuaca untuk cuaca saat pengamatan: {e}")
+            hasil_cuaca_saat = {
+                "weather_intensity": None, "weather_descriptor": None,
+                "weather_precipitation": None, "weather_obscuration": None,
+                "weather_other": None,
+            }
+
+        # Cuaca YANG LALU (self.combo_cuaca_lalu): TIDAK diproses lewat
+        # ekstrak_cuaca() karena field ini disimpan tanpa prefix "RE" (lihat
+        # isi_data_ke_form), jadi ekstrak_cuaca() akan salah mengiranya
+        # cuaca saat pengamatan. Dikirim apa adanya sebagai kode singkat
+        # (mis. "RA", "TS") sesuai asumsi value dropdown #recent-w-1 di
+        # fill_form2.py.
+        teks_cuaca_lalu = self.combo_cuaca_lalu.text().strip()
+
         data_final = {
             "full_date": d['tanggal_observasi'], # Ambil dari database
             "hour": self.input_jam.text(),
@@ -794,7 +910,19 @@ class MetarApp(QMainWindow):
             "clouds": data_clouds,
             "temp": self.input_temp.text(),
             "dew_point": self.input_embun.text(),
-            "pressure": self.input_tekanan.text()
+            "pressure": self.input_tekanan.text(),
+            # Status laporan (checklist COR/NIL/AUTO di UI)
+            "is_cor": is_cor,
+            "is_nil": is_nil,
+            "is_auto": is_auto,
+            # Cuaca saat pengamatan (dipecah dari field teks bebas)
+            "weather_intensity": hasil_cuaca_saat.get("weather_intensity"),
+            "weather_descriptor": hasil_cuaca_saat.get("weather_descriptor"),
+            "weather_precipitation": hasil_cuaca_saat.get("weather_precipitation"),
+            "weather_obscuration": hasil_cuaca_saat.get("weather_obscuration"),
+            "weather_other": hasil_cuaca_saat.get("weather_other"),
+            # Cuaca yang lalu (kode singkat, tanpa prefix RE)
+            "recent_weather": teks_cuaca_lalu or None,
             # ... sesuaikan key dengan apa yang diminta fill_form2.py
         }
         

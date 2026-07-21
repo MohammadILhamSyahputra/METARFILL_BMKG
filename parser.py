@@ -112,17 +112,158 @@ def ambil_data_metar_bmkg(tahun, bulan, tanggal):
     return df_terfilter
 
 
+# =============================================================================
+# EKSTRAK CUACA SAAT PENGAMATAN & CUACA YANG LALU DARI TEKS
+# =============================================================================
+# Dipisah jadi fungsi tersendiri (bukan inline di parse_metar) supaya bisa
+# dipakai ulang oleh form_input.py untuk field teks bebas "Cuaca Saat
+# Pengamatan" / "Cuaca yang Lalu" di GUI -- baik saat mengisi field itu dari
+# data hasil parsing, MAUPUN saat membaca kembali isi field itu (yang bisa
+# saja sudah diedit manual oleh observer) sebelum dikirim ke fill_form2.py.
+# Dengan begini logikanya SATU tempat saja, tidak dobel antara parser.py dan
+# form_input.py.
+_WX_INTENSITY_RE = r'(?P<intensity>[-+]|VC)?'
+_WX_DESCRIPTOR_RE = r'(?P<descriptor>MI|PR|BC|DR|BL|SH|TS|FZ)?'
+_WX_PHENOMENA_RE = r'(?P<phenomena>(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+)?'
+_WX_PATTERN = re.compile(r'^(?P<re>RE)?' + _WX_INTENSITY_RE + _WX_DESCRIPTOR_RE + _WX_PHENOMENA_RE + r'$')
+
+# Kode fenomena presipitasi vs. obscuration vs. lainnya -- dipakai untuk
+# memetakan ke radio group 'radio-precipitation' / 'radio-obscuration' /
+# 'radio-other' di fill_form2.py.
+_KODE_PRESIPITASI = {"DZ", "RA", "SN", "SG", "IC", "PL", "GR", "GS", "UP"}
+_KODE_OBSCURATION = {"BR", "FG", "FU", "VA", "DU", "SA", "HZ", "PY"}
+_KODE_LAINNYA = {"PO", "SQ", "FC", "SS", "DS"}
+
+# Token yang jelas bukan kode cuaca, dilewati supaya tidak sia-sia dicoba
+# dicocokkan (atau -- lebih penting -- supaya tidak salah ke-parse).
+_WX_TOKEN_ABAIKAN = {"NOSIG", "CAVOK", "AUTO", "NIL", "COR"}
+
+
+def ekstrak_cuaca(teks):
+    """
+    Format kode cuaca METAR standar WMO: [RE](intensitas)(deskriptor)(fenomena):
+      "TS"      -> deskriptor TS (thunderstorm), tanpa fenomena presipitasi
+      "+TSRA"   -> intensitas +, deskriptor TS, fenomena RA (hujan)
+      "-TSRA"   -> intensitas -, deskriptor TS, fenomena RA
+      "RERA"    -> cuaca YANG LALU (prefix RE) fenomena RA
+      "RETS"    -> cuaca YANG LALU (prefix RE) deskriptor TS
+
+    Menerima teks bebas (dipecah per-spasi) -- bisa berupa potongan kode
+    METAR mentah, atau isi field teks bebas di GUI. Mengembalikan dict:
+      {
+        "weather_intensity": None|"", "-", "+", "VC"
+        "weather_descriptor": None atau salah satu MI/PR/BC/DR/BL/SH/TS/FZ
+        "weather_precipitation": None atau salah satu kode presipitasi
+        "weather_obscuration": None atau salah satu kode obscuration
+        "weather_other": None atau salah satu kode lainnya (PO/SQ/FC/SS/DS)
+        "recent_weather": None atau kode cuaca yang lalu (tanpa prefix RE)
+      }
+    "" (string kosong, BUKAN None) pada weather_intensity berarti intensitas
+    Moderate -- tetap dianggap pilihan valid oleh isi_radio_group() di
+    fill_form2.py, jangan disamakan dengan None (None = grup dilewati sama
+    sekali / tidak ada cuaca).
+    """
+    hasil_cuaca = {
+        "weather_intensity": None,
+        "weather_descriptor": None,
+        "weather_precipitation": None,
+        "weather_obscuration": None,
+        "weather_other": None,
+        "recent_weather": None,
+    }
+
+    cuaca_saat_ini = None   # token cuaca saat pengamatan pertama yang ketemu
+    cuaca_lalu = None       # token cuaca yang lalu (RE...) pertama yang ketemu
+
+    for tok in (teks or "").split():
+        tok = tok.strip().upper()
+        if not tok or tok in _WX_TOKEN_ABAIKAN:
+            continue
+        m = _WX_PATTERN.match(tok)
+        if not m:
+            continue
+        deskriptor = m.group("descriptor")
+        fenomena = m.group("phenomena")
+        # Kalau deskriptor & fenomena dua-duanya kosong, token ini bukan
+        # kode cuaca sungguhan (mis. token kosong / hanya kebetulan cocok).
+        if not deskriptor and not fenomena:
+            continue
+
+        if m.group("re"):
+            if cuaca_lalu is None:
+                cuaca_lalu = {"descriptor": deskriptor or "", "phenomena": fenomena or ""}
+        else:
+            if cuaca_saat_ini is None:
+                cuaca_saat_ini = {
+                    "intensity": m.group("intensity") or "",
+                    "descriptor": deskriptor or "",
+                    "phenomena": fenomena or "",
+                }
+
+    if cuaca_saat_ini:
+        hasil_cuaca["weather_intensity"] = cuaca_saat_ini["intensity"]
+        if cuaca_saat_ini["descriptor"]:
+            hasil_cuaca["weather_descriptor"] = cuaca_saat_ini["descriptor"]
+        if cuaca_saat_ini["phenomena"]:
+            # Kalau fenomenanya gabungan (mis. "RASN"), ambil kode 2 huruf
+            # pertama saja -- form hanya punya satu radio per kategori.
+            kode2 = cuaca_saat_ini["phenomena"][:2]
+            if kode2 in _KODE_PRESIPITASI:
+                hasil_cuaca["weather_precipitation"] = kode2
+            elif kode2 in _KODE_OBSCURATION:
+                hasil_cuaca["weather_obscuration"] = kode2
+            elif kode2 in _KODE_LAINNYA:
+                hasil_cuaca["weather_other"] = kode2
+
+    if cuaca_lalu:
+        # CATATAN/ASUMSI: dropdown #recent-w-1 di fill_form2.py diasumsikan
+        # memakai kode singkat TANPA prefix "RE" (mis. "RA", "TS", "SHRA"),
+        # karena kita belum punya HTML asli formulirnya untuk memastikan
+        # opsi value-nya persis apa. Kalau ternyata value dropdownnya beda
+        # (mis. pakai "RERA" utuh, atau kode WMO yang berbeda), sesuaikan
+        # baris ini.
+        hasil_cuaca["recent_weather"] = (cuaca_lalu["descriptor"] or "") + (cuaca_lalu["phenomena"] or "")
+
+    return hasil_cuaca
+
+
 def parse_metar(line, tahun=None, bulan=None):
     if "METAR" not in line: return None
     metar_code = line.split("METAR")[1].strip()
-    parts = line.split("METAR")[1].strip().split()
-    station_id = parts[0]
-    timestamp = parts[1] # Contoh: 090700Z
-    
+
+    # PERBAIKAN BUG UTAMA: sebelumnya station_id & timestamp diambil dari
+    # parts[0]/parts[1] secara membabi-buta. Ini SALAH untuk baris koreksi
+    # yang formatnya "METAR COR WARD 080430Z ..." -- kata "COR" ikut
+    # terhitung sebagai parts[0], sehingga parts[1] yang seharusnya
+    # timestamp ("080430Z") malah kebagian "WARD" (station_id). Akibatnya
+    # day = "WA", dan int(day) di full_date/label_date meledak dengan
+    # "invalid literal for int() with base 10: 'WA'" -- persis error yang
+    # dilaporkan, dan HANYA muncul pada tanggal yang punya baris koreksi
+    # (CCA/CCB/CCC).
+    #
+    # Sekarang dipakai regex yang secara eksplisit mengizinkan (opsional)
+    # token "COR" di depan station_id, jadi posisi station_id & timestamp
+    # selalu benar tidak peduli baris itu koreksi atau bukan.
+    header_match = re.match(r'(?:COR\s+)?([A-Z0-9]{4})\s+(\d{6})Z', metar_code)
+    if not header_match:
+        print(f"   -> WARNING: Header METAR tidak dikenali, baris dilewati: {line.strip()}")
+        return None
+
+    station_id = header_match.group(1)
+    timestamp = header_match.group(2) + "Z"  # Contoh: 090700Z
+
     # Ambil hari dan jam
     day = timestamp[0:2]    # "09"
     hour = timestamp[2:4]   # "07"
     minute = timestamp[4:6]
+
+    # Flag status laporan: COR (koreksi), AUTO (observasi otomatis tanpa
+    # observer), NIL (tidak ada laporan/data). Dicek sebagai kata utuh
+    # supaya tidak salah kena token lain yang kebetulan mengandung huruf
+    # yang sama.
+    is_cor = bool(re.match(r'COR\s', metar_code))
+    is_auto = bool(re.search(r'\bAUTO\b', metar_code))
+    is_nil = bool(re.search(r'\bNIL\b', metar_code))
 
     # Mapping nama field agar cocok dengan fill_form.py
     hasil = {
@@ -132,7 +273,10 @@ def parse_metar(line, tahun=None, bulan=None):
         "direction": "0", "speed": "0", 
         "dir_min": "0", "dir_max": "0", 
         "visibility": "9999",
-        "temp": "25", "dew_point": "20", "pressure": "1013"
+        "temp": "25", "dew_point": "20", "pressure": "1013",
+        "is_cor": is_cor,
+        "is_auto": is_auto,
+        "is_nil": is_nil,
     }
 
     now = datetime.now()
@@ -167,15 +311,30 @@ def parse_metar(line, tahun=None, bulan=None):
     var = re.search(r'([0-9]{3})V([0-9]{3})', metar_code)
     if var:
         hasil["dir_min"], hasil["dir_max"] = var.group(1), var.group(2)
-        
-    vis = re.search(r'\s([0-9]{4})\s', metar_code)
-    if vis:
-        vis_val = int(vis.group(1))
-        # Jika kode METAR 9999, konversi ke 10000 untuk formulir
-        if vis_val == 9999:
+
+    # PERBAIKAN: sebelumnya visibility dicari dengan `\s([0-9]{4})\s` yang
+    # MENGHARUSKAN persis 4 digit. Ini melewatkan dua kasus nyata:
+    #   1. "CAVOK" (visibility >= 10km, tidak ada awan signifikan di bawah
+    #      5000ft, tidak ada cuaca signifikan) -- sebelumnya tidak dikenali
+    #      sama sekali, visibility jatuh ke default "9999" yang salah.
+    #   2. Visibility di bawah 1000 meter kadang ditulis 3 digit tanpa
+    #      leading zero (mis. "500" alih-alih "0500"), lihat baris jam
+    #      07:00Z tanggal 04/12 di data yang dilaporkan -- sebelumnya token
+    #      3-digit ini tidak pernah ketemu oleh regex 4-digit.
+    # Sekarang dicari per-token: token "CAVOK" ditangani eksplisit, lalu
+    # token pertama yang murni 3-4 digit dianggap visibility. Token lain di
+    # baris METAR (arah angin+KT, awan macam "FEW020", suhu "28/24", QNH
+    # "Q1013") semuanya punya huruf/tanda baca yang menempel, jadi tidak
+    # akan ketiban match ini.
+    for tok in metar_code.split():
+        if tok == "CAVOK":
             hasil["visibility"] = "10000"
-        else:
-            hasil["visibility"] = str(vis_val)
+            break
+        if re.fullmatch(r'[0-9]{3,4}', tok):
+            vis_val = int(tok)
+            # Jika kode METAR 9999, konversi ke 10000 untuk formulir
+            hasil["visibility"] = "10000" if vis_val == 9999 else str(vis_val)
+            break
 
     # PENTING: sebelumnya pakai re.search() yang cuma menangkap SATU layer
     # awan pertama (mis. hanya "FEW020" walau kodenya "FEW020 SCT100 BKN200"),
@@ -212,7 +371,12 @@ def parse_metar(line, tahun=None, bulan=None):
     else:
         # Jika kode Q tidak ditemukan sama sekali di METAR
         hasil["pressure"] = "9999"
-        
+
+    # CUACA SAAT PENGAMATAN & CUACA YANG LALU (BARU -- sebelumnya sama
+    # sekali tidak diparse). Logikanya ada di ekstrak_cuaca() di atas
+    # supaya bisa dipakai ulang oleh form_input.py.
+    hasil.update(ekstrak_cuaca(metar_code))
+
     return hasil
 
 def simpan_ke_db(data, raw_line=None, conn=None):
@@ -238,19 +402,69 @@ def simpan_ke_db(data, raw_line=None, conn=None):
 
     cursor = conn.cursor()
 
-    # Cek duplikat berdasarkan waktu dan tanggal
+    # Cek apakah sudah ada baris utk waktu+tanggal yang sama.
     cursor.execute("SELECT id_metar FROM METAR WHERE waktu_observasi = ? AND tanggal_observasi = ?", 
                    (f"{data['hour']}:{data['minute']}", data['full_date']))
-    
-    if cursor.fetchone():
-        if kelola_koneksi_sendiri:
-            conn.close()
-        return "exists"
+    baris_lama = cursor.fetchone()
 
     # Prioritaskan raw_line jika diberikan langsung oleh pemanggil, jika
     # tidak, pakai data['raw_metar'] yang sudah diisi oleh parse_metar().
     # Baru kalau dua-duanya kosong, gunakan placeholder sebagai jaga-jaga.
     raw_metar_text = raw_line or data.get('raw_metar') or 'METAR WARD ...'
+
+    # PERBAIKAN: sebelumnya kalau sudah ada baris utk waktu+tanggal yang
+    # sama, baris baru langsung DISKIP ("exists") -- artinya kalau BMKG
+    # mengirim koreksi (CCA/CCB/CCC) utk jam yang sama, koreksinya TIDAK
+    # PERNAH tersimpan, dan yang tersimpan tetap laporan AUTO/awal yang
+    # salah. Karena proses_data_untuk_tanggal() memproses baris berurutan
+    # dari atas ke bawah sesuai urutan tampil di web BMKG (AUTO -> CCA ->
+    # CCB -> CCC), dan permintaan-nya adalah "ambil yang paling
+    # akhir/bawah", maka sekarang baris yang sudah ada di-UPDATE dengan
+    # data terbaru (bukan di-skip), sehingga versi terakhir yang menang.
+    if baris_lama:
+        id_metar = baris_lama[0]
+
+        cursor.execute(
+            "UPDATE METAR SET raw_metar = ? WHERE id_metar = ?",
+            (raw_metar_text, id_metar)
+        )
+
+        cursor.execute("""
+            UPDATE Parsing_Result SET
+                wind_direction = ?, wind_speed = ?, wind_gust = ?,
+                wind_dir_min = ?, wind_dir_max = ?, visibility_prevailing = ?,
+                temperature = ?, dewpoint = ?, pressure = ?, trend = ?
+            WHERE id_metar = ?""",
+            (data.get('direction', '0'), data.get('speed', '0'), data.get('gust', '0'),
+             data.get('dir_min', '0'), data.get('dir_max', '0'), data.get('visibility', '9999'),
+             data.get('temp', '25'), data.get('dew_point', '20'),
+             data.get('pressure', '9999'), data.get('trend', 'NOSIG'), id_metar)
+        )
+
+        cursor.execute("SELECT id_parsing FROM Parsing_Result WHERE id_metar = ?", (id_metar,))
+        row = cursor.fetchone()
+        id_parsing = row[0] if row else None
+
+        if id_parsing is not None:
+            # Ganti seluruh record Awan lama dengan yang baru (paling
+            # sederhana & aman ketimbang mencoba mencocokkan urutan lama
+            # vs baru satu-satu, karena jumlah layer awan bisa berubah
+            # antar versi koreksi).
+            cursor.execute("DELETE FROM Awan WHERE id_parsing = ?", (id_parsing,))
+            daftar_awan = data.get('clouds', [])[:3]
+            for urutan, awan in enumerate(daftar_awan, start=1):
+                cursor.execute("""
+                    INSERT INTO Awan (id_parsing, urutan, cloud_amount, cloud_height, cloud_type) 
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (id_parsing, urutan, awan.get('amount', ''), awan.get('height', ''), awan.get('type', ''))
+                )
+            print(f"DEBUG PARSER: {len(daftar_awan)} record awan diperbarui untuk id_parsing={id_parsing}")
+
+        if kelola_koneksi_sendiri:
+            conn.commit()
+            conn.close()
+        print(f"Data untuk {data['full_date']} {data['hour']}:{data['minute']} DIPERBARUI (koreksi/CCx) di database!")
+        return "updated"
 
     # 1. Simpan ke tabel METAR
     cursor.execute("""
@@ -333,7 +547,7 @@ def proses_data_untuk_tanggal(tahun, bulan, tanggal):
             "gagal_parse":     jumlah baris yang gagal di-parse_metar(),
         }
     """
-    ringkasan = {"total_ditemukan": 0, "baru": 0, "sudah_ada": 0, "gagal_parse": 0}
+    ringkasan = {"total_ditemukan": 0, "baru": 0, "sudah_ada": 0, "gagal_parse": 0, "diperbarui": 0}
 
     df = ambil_data_metar_bmkg(tahun, bulan, tanggal)
     if df is None or df.empty:
@@ -360,6 +574,8 @@ def proses_data_untuk_tanggal(tahun, bulan, tanggal):
             status = simpan_ke_db(data, line, conn=conn)
             if status == "success":
                 ringkasan["baru"] += 1
+            elif status == "updated":
+                ringkasan["diperbarui"] += 1
             elif status == "exists":
                 ringkasan["sudah_ada"] += 1
 
