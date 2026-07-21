@@ -691,6 +691,7 @@ class MetarApp(QMainWindow):
         self.input_cuaca_saat.setText("")
         self.combo_cuaca_lalu.setText("")
 
+        parsed = None
         if raw_metar_value:
             try:
                 from parser import parse_metar
@@ -727,7 +728,12 @@ class MetarApp(QMainWindow):
         
         self.input_arah_angin.setText(str(d['wind_direction']))
         self.input_kecepatan_angin.setText(str(d['wind_speed']))
-        self._perbarui_checkbox_vrb()
+        if parsed and "is_vrb" in parsed:
+        
+            self.checkbox_vrb_arah.setChecked(bool(parsed.get("is_vrb")))
+        else:
+         
+            self._perbarui_checkbox_vrb()
         self.input_gust.setText(str(data_dict.get('wind_gust', '0')))
         self.input_arah_min.setText(str(d['wind_dir_min']))
         self.input_arah_max.setText(str(d['wind_dir_max']))

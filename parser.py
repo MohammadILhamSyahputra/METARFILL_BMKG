@@ -49,7 +49,6 @@ def ambil_data_metar_bmkg(tahun, bulan, tanggal):
     for baris in baris_teks:
         baris = baris.strip()
 
-        # Cek apakah baris tersebut diawali oleh tanggal yang dicari
         if baris.startswith(target_format_tanggal):
             match = re.split(r'\t|\s{2,}', baris, maxsplit=1)
 
@@ -66,7 +65,6 @@ def ambil_data_metar_bmkg(tahun, bulan, tanggal):
         print(f" [Info] Tidak ditemukan baris data yang berawalan tanggal {target_format_tanggal} di halaman web.")
         return None
 
-    # Membuat DataFrame Pandas dari baris yang berhasil difilter
     header = ["Waktu (UTC)", "Data METAR"]
     df_terfilter = pd.DataFrame(records, columns=header)
 
@@ -158,7 +156,6 @@ def parse_metar(line, tahun=None, bulan=None):
     is_auto = bool(re.search(r'\bAUTO\b', metar_code))
     is_nil = bool(re.search(r'\bNIL\b', metar_code))
 
-    # Mapping nama field agar cocok dengan fill_form.py
     hasil = {
         "day": day,
         "hour": hour,
@@ -170,6 +167,7 @@ def parse_metar(line, tahun=None, bulan=None):
         "is_cor": is_cor,
         "is_auto": is_auto,
         "is_nil": is_nil,
+        "is_vrb": False,
     }
 
     now = datetime.now()
@@ -180,16 +178,19 @@ def parse_metar(line, tahun=None, bulan=None):
 
     hasil["raw_metar"] = line.strip()
     
-    # Logic Parsing Anda
     angin = re.search(r'(VRB|[0-9]{3})([0-9]{2,3})(?:G([0-9]{2,3}))?KT', metar_code)
     if angin:
-        hasil["direction"] = angin.group(1).replace("VRB", "0")
+        arah_angin_raw = angin.group(1)
+        hasil["direction"] = arah_angin_raw.replace("VRB", "0")
         hasil["speed"] = angin.group(2)
         hasil["gust"] = angin.group(3) or "0"
-        
+        if arah_angin_raw == "VRB":
+            hasil["is_vrb"] = True
+
     var = re.search(r'([0-9]{3})V([0-9]{3})', metar_code)
     if var:
         hasil["dir_min"], hasil["dir_max"] = var.group(1), var.group(2)
+        hasil["is_vrb"] = True
 
     for tok in metar_code.split():
         if tok == "CAVOK":
@@ -197,7 +198,6 @@ def parse_metar(line, tahun=None, bulan=None):
             break
         if re.fullmatch(r'[0-9]{3,4}', tok):
             vis_val = int(tok)
-            # Jika kode METAR 9999, konversi ke 10000 untuk formulir
             hasil["visibility"] = "10000" if vis_val == 9999 else str(vis_val)
             break
 
@@ -219,10 +219,8 @@ def parse_metar(line, tahun=None, bulan=None):
     qnh = re.search(r'Q([0-9]{4}|////)', metar_code)
     if qnh:
         val = qnh.group(1)
-        # Jika sensor rusak (////), kita ganti menjadi 9999
         hasil["pressure"] = "9999" if val == "////" else val
     else:
-        # Jika kode Q tidak ditemukan sama sekali di METAR
         hasil["pressure"] = "9999"
 
     hasil.update(ekstrak_cuaca(metar_code))
@@ -284,7 +282,6 @@ def simpan_ke_db(data, raw_line=None, conn=None):
         print(f"Data untuk {data['full_date']} {data['hour']}:{data['minute']} DIPERBARUI (koreksi/CCx) di database!")
         return "updated"
 
-    # 1. Simpan ke tabel METAR
     cursor.execute("""
         INSERT INTO METAR (raw_metar, icao, tanggal_observasi, waktu_observasi) 
         VALUES (?, ?, ?, ?)""", 
@@ -303,11 +300,9 @@ def simpan_ke_db(data, raw_line=None, conn=None):
         data.get('temp', '25'), data.get('dew_point', '20'), 
         data.get('pressure', '9999'), data.get('trend', 'NOSIG'))
     )
-    # Ambil ID untuk referensi tabel Awan
     id_parsing = cursor.lastrowid
     print(f"DEBUG PARSER: id_parsing yang dihasilkan: {id_parsing}")
 
-    # 3. Simpan ke tabel Awan (mendukung sampai 3 record per observasi)
     daftar_awan = data.get('clouds', [])[:3]
     for urutan, awan in enumerate(daftar_awan, start=1):
         cursor.execute("""
@@ -364,7 +359,6 @@ def _jalankan_fetch_manual():
     response = requests.get(url)
     lines = response.text.splitlines()
 
-    # Cari baris yang mengandung 'METAR WARD'
     metar_lines = [line for line in lines if "METAR WARD" in line]
 
     if metar_lines:
@@ -372,7 +366,6 @@ def _jalankan_fetch_manual():
             print(f"Memproses baris: {line}")
             data = parse_metar(line)
             if data:
-                # Panggil fungsi simpan_ke_db yang sudah kita buat
                 simpan_ke_db(data)
         print("Semua data berhasil diproses!")
     else:

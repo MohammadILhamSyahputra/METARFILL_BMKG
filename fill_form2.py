@@ -58,19 +58,10 @@ def run_test(data_cuaca, nama_observer):
 
     with sync_playwright() as p:
         browser = None
-        # PERBAIKAN: flag ini di-set jadi True lewat event "disconnected" dari
-        # Playwright kalau observer menutup window browser SECARA MANUAL.
-        # threading.Event() dipakai (bukan variabel bool biasa) karena
-        # callback event Playwright dan loop tunggu di bawah perlu saling
-        # "lihat" perubahan status ini dengan aman.
         ditutup_manual = threading.Event()
 
         try:
             browser = p.chromium.launch(headless=False)
-            # PENTING: begitu observer menutup window browser manual (klik
-            # tombol X), event "disconnected" ini langsung terpicu -- dipakai
-            # nanti supaya loop tunggu 60 detik di bawah bisa langsung
-            # berhenti tanpa perlu menunggu sisa waktu habis.
             browser.on("disconnected", lambda: ditutup_manual.set())
 
             context = browser.new_context(storage_state="auth_state.json")
@@ -197,7 +188,6 @@ def run_test(data_cuaca, nama_observer):
 
             # =========================================================
             # 8. URUTAN 8: SINKRONISASI DATA ANGIN, VISIBILITY, SUHU, TEKANAN
-            #    (VRB tidak lagi otomatis diklik di sini -- lihat langkah 9)
             # =========================================================
             print(f"\n[8] Menginjeksi data angin/visibility/suhu/tekanan: {data_cuaca}")
             page.evaluate("""(data) => {
@@ -234,14 +224,12 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(1)
 
             # =========================================================
-            # 9. URUTAN 9: CHECKBOX VRB (OTOMATIS JIKA KECEPATAN ANGIN > 2 KNOT)
+            # 9. URUTAN 9: CHECKBOX VRB 
             # =========================================================
             print("\n[9] Mengatur kondisi VRB...")
-            kecepatan_angin = float(data_cuaca.get('speed', 0) or 0)
-            vrb_harus_dicentang = kecepatan_angin > 2
+            vrb_harus_dicentang = bool(data_cuaca.get('is_vrb', False))
 
             if vrb_harus_dicentang:
-                # Cukup centang VRB saja, JANGAN kosongkan arah angin
                 page.evaluate("""() => {
                     const cb = document.getElementById('checkbox-vrb');
                     if (cb) {
@@ -259,13 +247,7 @@ def run_test(data_cuaca, nama_observer):
             # =========================================================
             # 9b. URUTAN 9b: CHECKBOX STATUS LAPORAN -- COR / NIL / AUTO (BARU)
             # =========================================================
-            # PENTING/CATATAN: id CSS di bawah ('checkbox-cor', 'checkbox-nil',
-            # 'checkbox-auto') masih DUGAAN, mengikuti pola penamaan
-            # 'checkbox-vrb' yang sudah terbukti benar di langkah 9 di atas.
-            # Belum ada HTML asli formulir bagian ini untuk dipastikan --
-            # kalau observer melihat log WARNING "checkbox tidak ditemukan"
-            # di bawah, cek nama id sebenarnya di halaman (klik kanan ->
-            # Inspect Element di checkbox COR/NIL/AUTO) lalu sesuaikan.
+      
             print("\n[9b] Mengatur checkbox status laporan (COR/NIL/AUTO)...")
 
             def _centang_checkbox_status(elemen_id, aktif, label):
@@ -288,9 +270,6 @@ def run_test(data_cuaca, nama_observer):
                 }""", elemen_id)
                 print(f"   -> Checkbox '{label}' dicentang.")
 
-            # Ketiganya (COR/NIL/AUTO) eksklusif satu sama lain di UI
-            # (form_input.py memakai QButtonGroup), jadi maksimal satu yang
-            # True di data_cuaca.
             _centang_checkbox_status("checkbox-cor", data_cuaca.get("is_cor"), "COR")
             _centang_checkbox_status("checkbox-nil", data_cuaca.get("is_nil"), "NIL")
             _centang_checkbox_status("checkbox-auto", data_cuaca.get("is_auto"), "AUTO")
@@ -308,19 +287,6 @@ def run_test(data_cuaca, nama_observer):
             )
 
             if ada_data_cuaca_saat_ini:
-                # PERBAIKAN: halaman ternyata punya BEBERAPA tombol dengan
-                # class "button-weather" sekaligus (kemungkinan slot cuaca
-                # w1/w2/w3, ditambah satu tombol lain yang disabled).
-                # page.locator("button.button-weather").click() sebelumnya
-                # mengharuskan hasilnya PERSIS SATU elemen (Playwright strict
-                # mode) -- begitu ada lebih dari satu match, langsung error
-                # "strict mode violation" alih-alih memilih salah satu.
-                #
-                # Sekarang: filter dulu yang TIDAK disabled, lalu ambil yang
-                # PERTAMA (asumsi itu slot cuaca w1, karena baru satu grup
-                # cuaca yang kita isi per observasi saat ini). Kalau nanti
-                # butuh isi lebih dari satu grup cuaca sekaligus, di sinilah
-                # tempatnya menambah loop ke slot w2/w3.
                 semua_tombol_cuaca = page.locator("button.button-weather")
                 jumlah_tombol = semua_tombol_cuaca.count()
                 print(f"   -> Ditemukan {jumlah_tombol} tombol 'button-weather' di halaman.")
@@ -371,10 +337,7 @@ def run_test(data_cuaca, nama_observer):
             for idx, awan in enumerate(daftar_awan, start=1):
                 print(f"   -> Record awan #{idx}: {awan}")
 
-                # 1. ISI FIELD LEWAT METHOD PLAYWRIGHT ASLI (bukan raw JS
-                #    el.value=...) -- fill()/select_option() Playwright
-                #    berinteraksi lebih mirip pengguna sungguhan dan biasanya
-                #    lebih reliable untuk sinkronisasi v-model Vue.
+        
                 page.wait_for_selector("#clouds-jumlah")
                 if awan.get("amount"):
                     page.select_option("#clouds-jumlah", value=awan["amount"])
@@ -392,33 +355,16 @@ def run_test(data_cuaca, nama_observer):
 
                 time.sleep(1)
 
-                # 2. SCOPE tabel Awan secara SPESIFIK (cari tabel yang benar-benar
-                #    mengandung #clouds-jumlah) -- bukan class generik "tbmetar"
-                #    yang kemungkinan dipakai di banyak tabel lain di halaman ini.
-                #    Sebelumnya pakai "table.tbmetar" yang salah scope, sehingga
-                #    hitungan baris "TERKONFIRMASI bertambah" ternyata FALSE
-                #    POSITIVE (baris yang bertambah dari tabel lain, bukan Awan).
+          
                 tabel_awan = page.locator("table:has(#clouds-jumlah)")
                 jumlah_baris_sebelum = tabel_awan.locator("tbody tr").count()
 
-                # PENTING: tombol '+' di-scope ke tabel_awan, BUKAN ke seluruh
-                # halaman (page.locator(...)). Kalau di-scope ke page, dan ada
-                # tombol hijau bulat ber-ikon '+' lain di halaman ini (mis. di
-                # blok Present Weather / Recent Weather yang pakai style sama),
-                # ".first" bisa mengambil tombol yang SALAH -> klik "berhasil"
-                # tapi tidak menambah baris di tabel Awan, atau tombolnya malah
-                # tidak ter-klik sama sekali karena beda posisi/tersembunyi.
                 tombol_tambah = tabel_awan.locator("button.btn-success:has(svg.feather-plus)").first
                 tombol_tambah.scroll_into_view_if_needed()
                 is_disabled = tombol_tambah.evaluate(
                     "(btn) => btn.disabled || btn.classList.contains('disabled')"
                 )
 
-                # 3. DIAGNOSTIK: jalan ke atas lewat Vue COMPONENT TREE ($parent,
-                #    bukan DOM parentElement) sampai 8 level, dump $data + computed
-                #    yang relevan di tiap level. Sebelumnya cuma jalan lewat DOM
-                #    tree dan berhenti di komponen <b-button> BootstrapVue sendiri
-                #    (cuma punya bvListeners/bvAttrs, bukan data awan yang asli).
                 diagnostik = tombol_tambah.evaluate("""(btn) => {
                     const amount = document.getElementById('clouds-jumlah');
                     const height = document.getElementById('cloud_height');
@@ -511,22 +457,7 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(5)
             print("Pengiriman selesai.")
 
-            # PERBAIKAN: sebelumnya di sini pakai time.sleep(60) yang
-            # BLOCKING PENUH selama 60 detik apa pun yang terjadi -- kalau
-            # observer sudah selesai memeriksa data dan menutup browser
-            # manual lebih cepat, script tetap "diam" menunggu sisa 60
-            # detik sebelum baris kode berikutnya (browser.close() di
-            # finally) sempat jalan.
-            #
-            # Sekarang dipakai 2 kondisi sekaligus (mana yang lebih dulu
-            # terjadi):
-            #   1) Observer menutup window browser secara MANUAL -> event
-            #      "disconnected" (didaftarkan di atas) langsung men-set
-            #      ditutup_manual, loop di bawah berhenti seketika.
-            #   2) Observer tidak menutup apa pun -> loop berhenti sendiri
-            #      setelah genap 60 detik, lalu browser ditutup otomatis
-            #      lewat blok finally seperti sebelumnya.
-            batas_waktu_detik = 60
+            batas_waktu_detik = 120
             print(f"Observer memiliki waktu maksimal {batas_waktu_detik} detik untuk memeriksa data "
                   f"-- atau tutup browser kapan saja untuk langsung lanjut tanpa menunggu.")
 
@@ -544,11 +475,7 @@ def run_test(data_cuaca, nama_observer):
             raise e
 
         finally:
-            # PERBAIKAN: kalau browser sudah ditutup manual oleh observer
-            # (ditutup_manual sudah ter-set), browser.close() TIDAK perlu
-            # dipanggil lagi -- koneksinya memang sudah putus. Tetap dibungkus
-            # try/except sebagai jaga-jaga kalau ada race condition kecil
-            # (mis. baru ditutup manual persis di tengah proses ini).
+
             if browser and not ditutup_manual.is_set():
                 try:
                     browser.close()
@@ -557,8 +484,6 @@ def run_test(data_cuaca, nama_observer):
 
 
 if __name__ == "__main__":
-    # Contoh struktur data_cuaca yang dipakai oleh run_test().
-    # Sesuaikan value radio/select dengan atribut 'value' pada HTML di field_bmkg_soft.txt
     contoh_data_cuaca = {
         "full_date": "2026-07-09",
         "hour": "00",
@@ -571,10 +496,11 @@ if __name__ == "__main__":
 
         # Angin
         "direction": "090",
-        "speed": "05",       # > 2 knot -> VRB otomatis tercentang
-        "gust": "",          # input#wind_gust, boleh dikosongkan
+        "speed": "05",
+        "gust": "",        
         "dir_min": "",
         "dir_max": "",
+        "is_vrb": False,
 
         # Visibility
         "visibility": "8000",
@@ -584,14 +510,14 @@ if __name__ == "__main__":
         "dew_point": "24",
         "pressure": "1010",
 
-        # Cuaca Saat Pengamatan (isi None untuk melewati grup tsb sepenuhnya)
+        # Cuaca Saat Pengamatan 
         "weather_intensity": None,
         "weather_descriptor": None,
         "weather_precipitation": None,
         "weather_obscuration": None,
         "weather_other": None,
 
-        # Cuaca yang Lalu (isi None untuk melewati)
+        # Cuaca yang Lalu 
         "recent_weather": None,
 
         # Awan, maksimal 3 record
