@@ -76,7 +76,6 @@ class LoginPage(QWidget):
         self.main_layout.setContentsMargins(50, 40, 50, 40)
         self.main_layout.setSpacing(40)
 
-        # ================= SISI KIRI (BRANDING & ILUSTRASI) =================
         self.left_container = QVBoxLayout()
         self.left_container.setSpacing(10)
 
@@ -134,12 +133,9 @@ class LoginPage(QWidget):
         
         self.left_container.addStretch()
 
-        # ================= SISI KANAN (FORM LOGIN CARD) =================
-        # Layout Vertikal Kanan untuk memposisikan kontainer di tengah secara vertikal (Kanan Tengah)
         self.right_container = QVBoxLayout()
-        self.right_container.addStretch()  # Dorong kontainer ke bawah agar di tengah
+        self.right_container.addStretch()  
 
-        # Pembuatan Kontainer Putih Kebiru-biruan (#F0F5FA) untuk Form
         self.login_card = QFrame()
         self.login_card.setFixedWidth(400)
         self.login_card.setStyleSheet("""
@@ -214,17 +210,12 @@ class LoginPage(QWidget):
         self.btn_login.setCursor(Qt.PointingHandCursor)
         self.btn_login.clicked.connect(self.proses_login)
         self.form_layout.addWidget(self.btn_login)
-
-        # Masukkan kontainer ke layout sisi kanan, lalu kunci posisinya di tengah vertikal
         self.right_container.addWidget(self.login_card)
-        self.right_container.addStretch()  # Dorong kontainer ke atas agar seimbang di tengah
-
-        # Menyusun ke layout utama jendela
+        self.right_container.addStretch()  
         self.main_layout.addLayout(self.left_container, stretch=1)
         self.main_layout.addLayout(self.right_container, stretch=0)
 
     def ambil_daftar_nama_dari_db(self):
-        """Mengambil daftar nama personil dari SQLite untuk Autocomplete"""
         nama_list = []
         try:
             conn = sqlite3.connect(get_db_path())

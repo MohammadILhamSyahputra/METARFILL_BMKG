@@ -20,7 +20,7 @@ class MetarApp(QMainWindow):
         self.user_data = user_data or {"id_user": None, "nama": "Zenita Endriani", "role": "Observer"}
         self.parent_window = parent_window
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri")
-        self.resize(1100, 700) # Sedikit diperlebar agar proporsi grid seimbang
+        self.resize(1100, 700) 
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
 
         # Main Layout: Top Header + Bottom Content
@@ -28,9 +28,7 @@ class MetarApp(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ==========================================
-        # 1. HEADER SECTION
-        # ==========================================
+        # HEADER SECTION
         header = QWidget()
         header.setObjectName("Header")
         header.setMinimumHeight(80)
@@ -46,17 +44,12 @@ class MetarApp(QMainWindow):
         """)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(20, 10, 20, 10)
-
-        # Logo BMKG menggunakan QPixmap
         logo_title_layout = QHBoxLayout()
         logo_label = QLabel()
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # Coba muat file png dengan path absolut
-        pixmap_logo = QPixmap(os.path.join(current_dir, "logo-bmkg.png"))
-        
-        # Jika png gagal, otomatis coba muat file webp sebagai cadangan
+        pixmap_logo = QPixmap(os.path.join(current_dir, "logo-bmkg.png"))        
         if pixmap_logo.isNull():
             pixmap_logo = QPixmap(os.path.join(current_dir, "logo-bmkg.webp"))
 
@@ -70,10 +63,8 @@ class MetarApp(QMainWindow):
         logo_title_layout.addWidget(logo_label)
         logo_title_layout.addWidget(title_text)
         header_layout.addLayout(logo_title_layout)
-
         header_layout.addStretch()
 
-        # User Profile menggunakan QPixmap
         user_layout = QHBoxLayout()
         user_name = QLabel("Zenita Endriani")
         user_name.setFont(QFont("Arial", 11, QFont.Bold))
@@ -98,14 +89,11 @@ class MetarApp(QMainWindow):
 
         main_layout.addWidget(header)
 
-        # ==========================================
-        # 2. BODY SECTION (Sidebar + Content Form)
-        # ==========================================
+        # BODY SECTION 
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # --- SIDEBAR ---
         sidebar = QWidget()
         sidebar.setFixedWidth(220)
         sidebar.setStyleSheet("""
@@ -154,14 +142,9 @@ class MetarApp(QMainWindow):
         self.logout_btn.setObjectName("LogoutBtn")
         sidebar_layout.addWidget(self.logout_btn)
         body_layout.addWidget(sidebar)
-
-        # Sebelumnya tombol sidebar (Dashboard, Riwayat METAR, LOGOUT) tidak
-        # terhubung ke fungsi apa pun sehingga berpindah halaman tidak
-        # berfungsi dari form ini. Hubungkan semuanya di sini.
         self.menu_group.idClicked.connect(self.handle_menu_click)
         self.logout_btn.clicked.connect(self.proses_logout)
 
-        # --- CONTENT CONTAINER (Form Title & Scroll Area) ---
         content_container = QWidget()
         content_layout = QVBoxLayout(content_container)
         content_layout.setContentsMargins(30, 20, 30, 20)
@@ -171,15 +154,10 @@ class MetarApp(QMainWindow):
         form_title.setStyleSheet("color: #000000; margin-bottom: 10px;")
         content_layout.addWidget(form_title)
 
-        # --------------------------------------------------------
-        # PERBAIKAN UTAMA: IMPLEMENTASI QSCROLLAREA
-        # --------------------------------------------------------
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setStyleSheet("background-color: transparent;")
-
-        # White Box Card Area (Sekarang dibungkus oleh scroll_area)
         card_widget = QWidget()
         card_widget.setStyleSheet("""
             QWidget {
@@ -236,12 +214,10 @@ class MetarApp(QMainWindow):
         grid_layout = QGridLayout()
         grid_layout.setSpacing(20)
 
-        # --- KOLOM KIRI (STATUS + ANGIN + VISIBILITY) ---
+        # KOLOM KIRI (STATUS + ANGIN + VISIBILITY)
         left_box = QVBoxLayout()
         left_box.setSpacing(15)
         
-
-# [1] SECTION: STATUS METAR (Eksklusif - Hanya Bisa Pilih Satu)
         status_frame = QFrame()
         status_frame.setStyleSheet("""
             QFrame { 
@@ -272,13 +248,9 @@ class MetarApp(QMainWindow):
         
         self.check_cor = QCheckBox("COR")
         self.check_nil = QCheckBox("NIL")
-        self.check_auto = QCheckBox("AUTO")
-        
-        # PERBAIKAN UTAMA: Membuat grup eksklusif khusus untuk ketiga Checkbox status
+        self.check_auto = QCheckBox("AUTO")        
         self.status_group = QButtonGroup(self)
-        self.status_group.setExclusive(True)
-        
-        # Masukkan checkbox ke dalam grup
+        self.status_group.setExclusive(True)        
         self.status_group.addButton(self.check_cor)
         self.status_group.addButton(self.check_nil)
         self.status_group.addButton(self.check_auto)
@@ -291,7 +263,7 @@ class MetarApp(QMainWindow):
         status_layout.addLayout(checkbox_layout)
         left_box.addWidget(status_frame)
         
-        # [2] SECTION: ANGIN
+        # SECTION ANGIN
         angin_frame = QFrame()
         angin_frame.setStyleSheet("""
             QFrame {
@@ -337,14 +309,6 @@ class MetarApp(QMainWindow):
         
         self.input_kecepatan_angin = QLineEdit()
         angin_layout.addWidget(self.input_kecepatan_angin, 2, 1)
-
-        # BARU: checkbox_vrb_arah sebelumnya cuma widget dekoratif -- tidak
-        # ada kode yang pernah men-setChecked()-nya, jadi observer harus
-        # klik manual, padahal fill_form2.py sudah otomatis mencentang VRB
-        # di website BMKGSatu begitu kecepatan > 2 knot (lihat URUTAN 9 di
-        # fill_form2.py). Disamakan di sini: textChanged di-connect supaya
-        # checkbox ikut ter-update REAL-TIME persis seperti behaviour di
-        # website, setiap kali field kecepatan angin diisi/diedit.
         self.input_kecepatan_angin.textChanged.connect(self._perbarui_checkbox_vrb)
 
         lbl_gust = QLabel("Gust")
@@ -353,7 +317,6 @@ class MetarApp(QMainWindow):
         self.input_gust = QLineEdit()
         angin_layout.addWidget(self.input_gust, 3, 1)
 
-        # KOREKSI 1: Pindahkan Variasi Angin ke baris indeks 4
         lbl_variasi = QLabel("Variasi Angin")
         lbl_variasi.setStyleSheet("font-weight: bold;")
         angin_layout.addWidget(lbl_variasi, 4, 0, 1, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -375,7 +338,7 @@ class MetarApp(QMainWindow):
         angin_layout.addLayout(var_layout, 5, 0, 1, 2)
         left_box.addWidget(angin_frame)
 
-        # [3] SECTION: VISIBILITY
+        # SECTION VISIBILITY
         vis_frame = QFrame()
         vis_frame.setStyleSheet("""
             QFrame {
@@ -427,11 +390,11 @@ class MetarApp(QMainWindow):
         left_box.addStretch() 
         grid_layout.addLayout(left_box, 0, 0, Qt.AlignmentFlag.AlignTop)
 
-        # --- KOLOM KANAN (WAKTU + AWAN + KUALITAS UDARA) ---
+        # KOLOM KANAN 
         right_box = QVBoxLayout()
         right_box.setSpacing(15)
 
-        # --- Section Waktu ---
+        # Section Waktu
         waktu_frame = QFrame()
         waktu_frame.setStyleSheet("""
             QFrame {
@@ -492,7 +455,7 @@ class MetarApp(QMainWindow):
         cuaca_layout.setSpacing(8)
         cuaca_layout.setContentsMargins(12, 12, 12, 12)
 
-        # 1. Cuaca Saat Pengamatan
+        # Cuaca Saat Pengamatan
         lbl_cuaca_saat = QLabel("CUACA SAAT PENGAMATAN")
         lbl_cuaca_saat.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
         cuaca_layout.addWidget(lbl_cuaca_saat)
@@ -504,7 +467,7 @@ class MetarApp(QMainWindow):
         cuaca_layout.addWidget(self.input_cuaca_saat)
         cuaca_layout.addSpacing(5)
 
-        # 2. Cuaca Yang Lalu
+        # Cuaca Yang Lalu
         lbl_cuaca_lalu = QLabel("CUACA YANG LALU")
         lbl_cuaca_lalu.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
         lbl_group1_lalu = QLabel("Group 1")
@@ -539,13 +502,11 @@ class MetarApp(QMainWindow):
         awan_layout.setSpacing(10)
         awan_layout.setContentsMargins(12, 12, 12, 12)
         
-        # 1. Judul Utama Section
         awan_title = QLabel("AWAN")
         awan_title.setObjectName("SectionTitle")
         awan_title.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
         awan_layout.addWidget(awan_title, 0, 0, 1, 3)   
 
-        # 2. Header Kolom Tabel (Jumlah, Tinggi, Type)
         lbl_h_jumlah = QLabel("JUMLAH")
         lbl_h_jumlah.setObjectName("TableHeaderTitle, color: #555555; font-size: 11px; font-weight: bold;")
         lbl_h_tinggi = QLabel("TINGGI (FEET)")
@@ -557,8 +518,6 @@ class MetarApp(QMainWindow):
         awan_layout.addWidget(lbl_h_tinggi, 1, 1, Qt.AlignmentFlag.AlignCenter)
         awan_layout.addWidget(lbl_h_type, 1, 2, Qt.AlignmentFlag.AlignCenter)
 
-        # 3. Membuat 3 Baris Input Data Menggunakan QLineEdit (Edit Teks)
-        # Baris Awan 1
         self.input_jumlah_awan1 = QLineEdit()
         self.input_tinggi_awan1 = QLineEdit()
         self.input_tipe_awan1 = QLineEdit()
@@ -585,7 +544,7 @@ class MetarApp(QMainWindow):
         awan_layout.addWidget(self.input_tinggi_awan3, 4, 1)
         awan_layout.addWidget(self.input_tipe_awan3, 4, 2)
 
-        # 4. Input Vertical Vis di baris paling bawah tabel awan
+        # Input Vertical Vis di baris paling bawah tabel awan
         lbl_v_vis = QLabel("VERTICAL VIS")
         lbl_v_vis.setStyleSheet("font-weight: bold; margin-top: 5px;")
         self.input_vertical_vis = QLineEdit()
@@ -594,14 +553,12 @@ class MetarApp(QMainWindow):
         awan_layout.addWidget(lbl_v_vis, 5, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         awan_layout.addWidget(self.input_vertical_vis, 5, 1, 1, 2) # Mengambil sisa 2 kolom ke kanan
 
-        # Set proporsi kolom agar lebar ketiganya terbagi sama rata
         awan_layout.setColumnStretch(0, 1)
         awan_layout.setColumnStretch(1, 1)
         awan_layout.setColumnStretch(2, 1)
         
         right_box.addWidget(awan_frame)
-        # ===================================================================
-        # --- Section Kualitas Udara ---
+        # Section Kualitas Udara 
         ku_frame = QFrame()
         ku_frame.setStyleSheet("""
             QFrame { 
@@ -642,9 +599,7 @@ class MetarApp(QMainWindow):
         grid_layout.addLayout(right_box, 0, 1, Qt.AlignmentFlag.AlignTop)        
         card_layout.addLayout(grid_layout)
 
-        # ==========================================
-        # 3. ACTION BUTTONS (BATAL & KIRIM DATA)
-        # ==========================================
+        # ACTION BUTTONS (BATAL & KIRIM DATA)
         action_btn_layout = QHBoxLayout()
         action_btn_layout.addStretch()
 
@@ -681,7 +636,6 @@ class MetarApp(QMainWindow):
         action_btn_layout.addWidget(kirim_btn)
         card_layout.addLayout(action_btn_layout)
 
-        # Memasukkan card_widget ke dalam scroll_area
         scroll_area.setWidget(card_widget)
         content_layout.addWidget(scroll_area)
         
@@ -700,19 +654,10 @@ class MetarApp(QMainWindow):
 
     def batal_kirim(self):
         if self.parent_window:
-            self.parent_window.show() # Tampilkan kembali dashboard
+            self.parent_window.show() 
         self.close()
 
     def _perbarui_checkbox_vrb(self):
-        """
-        Menentukan status checkbox VRB berdasarkan kecepatan angin, PERSIS
-        mengikuti aturan yang sudah dipakai fill_form2.py saat mengisi
-        website BMKGSatu (kecepatan_angin > 2 knot -> VRB aktif). Dipanggil
-        otomatis tiap kali input_kecepatan_angin berubah (lihat
-        .textChanged.connect di atas), jadi checkbox di GUI ini selalu
-        sinkron dengan apa yang bakal terjadi di website tanpa observer
-        perlu klik manual.
-        """
         teks_kecepatan = self.input_kecepatan_angin.text().strip()
         try:
             kecepatan_angin = float(teks_kecepatan) if teks_kecepatan else 0
@@ -721,8 +666,6 @@ class MetarApp(QMainWindow):
         self.checkbox_vrb_arah.setChecked(kecepatan_angin > 2)
 
     def isi_data_ke_form(self):
-        # Sesuaikan indeks [0], [1], dst dengan urutan query SELECT Anda di Dashboard
-        # Contoh urutan data: waktu, arah, kec, vis, tinggi, temp, embun
         d = self.data_metar
         data_dict = dict(d)
         print(data_dict)
@@ -731,33 +674,17 @@ class MetarApp(QMainWindow):
         print(f"DEBUG: Data dictionary: {data_dict}")
         print(f"DEBUG: Isi lengkap data_metar: {d}")
 
-        # PENTING: sqlite3.Row TIDAK mendukung `in` untuk mengecek nama kolom
-        # (operator `in` pada Row akan mengecek nilai/value, bukan key/kolom),
-        # sehingga sebelumnya `'raw_metar' in d` selalu bernilai False dan
-        # kolom METAR di form selalu kosong. Gunakan akses langsung dengan
-        # try/except supaya tidak bergantung pada perilaku `in`/keys() sama
-        # sekali.
         try:
             raw_metar_value = d['raw_metar']
         except (IndexError, KeyError):
             raw_metar_value = None
 
         if raw_metar_value:
-            # Isi kolom METAR dengan data mentah (raw) hasil pengambilan dari
-            # BMKG, BUKAN hasil parsing, sesuai kebutuhan form.
             self.input_metar.setText(str(raw_metar_value))
             print("TEXTBOX =", self.input_metar.text())
         else:
             print("DEBUG: 'raw_metar' tidak ditemukan / kosong pada data_metar yang dikirim ke form ini.")
 
-        # BARU: checklist COR/NIL/AUTO + field Cuaca Saat Pengamatan & Cuaca
-        # yang Lalu. Sebelumnya widget-widget ini (self.check_cor,
-        # self.check_nil, self.check_auto, self.input_cuaca_saat,
-        # self.combo_cuaca_lalu) ada di UI tapi TIDAK PERNAH diisi dari data
-        # -- selalu kosong/tidak tercentang berapa pun isi raw_metar-nya.
-        # Di-parse ulang dari raw_metar (bukan nambah kolom DB baru) lewat
-        # parse_metar() milik parser.py, supaya logikanya persis sama dengan
-        # yang dipakai backend fill_form2.py (satu sumber kebenaran).
         self.check_cor.setChecked(False)
         self.check_nil.setChecked(False)
         self.check_auto.setChecked(False)
@@ -773,9 +700,6 @@ class MetarApp(QMainWindow):
                 print(f"DEBUG: Gagal re-parse raw_metar untuk checklist COR/NIL/AUTO/cuaca: {e}")
 
             if parsed:
-                # Status_group di UI bersifat eksklusif (COR/NIL/AUTO cuma
-                # boleh salah satu), jadi urutan prioritas: COR > NIL > AUTO
-                # kalau (secara tidak lazim) lebih dari satu flag menyala.
                 if parsed.get("is_cor"):
                     self.check_cor.setChecked(True)
                 elif parsed.get("is_nil"):
@@ -783,9 +707,6 @@ class MetarApp(QMainWindow):
                 elif parsed.get("is_auto"):
                     self.check_auto.setChecked(True)
 
-                # Tampilkan ringkasan cuaca saat pengamatan sebagai teks
-                # (mis. "-TS RA" / "TS"), sesuai field bebas-teks yang ada
-                # di UI saat ini (self.input_cuaca_saat berupa QLineEdit).
                 bagian_cuaca_saat = [
                     parsed.get("weather_intensity") or "",
                     parsed.get("weather_descriptor") or "",
@@ -798,8 +719,7 @@ class MetarApp(QMainWindow):
                 if parsed.get("recent_weather"):
                     self.combo_cuaca_lalu.setText(parsed["recent_weather"])
         
-        # Waktu (Contoh: "05:30")
-        waktu_str = d['waktu_observasi'] # Contoh: "06:00"
+        waktu_str = d['waktu_observasi'] 
         if waktu_str and ":" in waktu_str:
             jam, menit = waktu_str.split(":")
             self.input_jam.setText(jam)
@@ -807,20 +727,13 @@ class MetarApp(QMainWindow):
         
         self.input_arah_angin.setText(str(d['wind_direction']))
         self.input_kecepatan_angin.setText(str(d['wind_speed']))
-        # Jaga-jaga: setText() di atas SEHARUSNYA sudah memicu textChanged
-        # -> _perbarui_checkbox_vrb() otomatis, tapi Qt tidak memicu sinyal
-        # kalau teks barunya kebetulan SAMA dengan teks sebelumnya. Panggil
-        # eksplisit di sini supaya checkbox VRB tetap benar walau begitu.
         self._perbarui_checkbox_vrb()
         self.input_gust.setText(str(data_dict.get('wind_gust', '0')))
         self.input_arah_min.setText(str(d['wind_dir_min']))
         self.input_arah_max.setText(str(d['wind_dir_max']))
         self.input_prevailing.setText(str(d['visibility_prevailing']))
-        # self.input_jumlah_awan1.setText(str(d['cloud_cover']))
-        # self.input_tinggi_awan1.setText(str(d['cloud_height']))
-        awan_data = data_dict.get('clouds', []) # Asumsi 'clouds' adalah list dari query JOIN
+        awan_data = data_dict.get('clouds', []) 
         
-        # Mapping input ke list yang sesuai
         inputs = [
             (self.input_jumlah_awan1, self.input_tinggi_awan1, self.input_tipe_awan1),
             (self.input_jumlah_awan2, self.input_tinggi_awan2, self.input_tipe_awan2),
@@ -835,13 +748,11 @@ class MetarApp(QMainWindow):
 
         self.input_temp.setText(str(d['temperature']))
         self.input_embun.setText(str(d['dewpoint']))
-        self.input_tekanan.setText(str(d['pressure']))          # Tekanan
+        self.input_tekanan.setText(str(d['pressure']))          
 
     def proses_kirim(self):
         from fill_form2 import run_test
-        d = self.data_metar  # Ambil data dari form_dashboard.py
-        # Ambil data terbaru dari form (jika user mengedit manual)
-        # 1. Kumpulkan data awan dari 3 baris input
+        d = self.data_metar  
         data_clouds = []
         input_rows = [
             (self.input_jumlah_awan1, self.input_tinggi_awan1, self.input_tipe_awan1),
@@ -850,7 +761,6 @@ class MetarApp(QMainWindow):
         ]
         
         for jumlah, tinggi, tipe in input_rows:
-            # Hanya kirim jika baris tersebut diisi (misal jumlah awan tidak kosong)
             if jumlah.text().strip():
                 data_clouds.append({
                     "amount": jumlah.text().strip(),
@@ -858,23 +768,10 @@ class MetarApp(QMainWindow):
                     "type": tipe.text().strip()
                 })
 
-        # BARU: baca ulang checklist COR/NIL/AUTO dari status_group (radio
-        # eksklusif) supaya observer bisa mengoreksi manual di form kalau
-        # perlu, lalu diteruskan ke fill_form2.py. Sebelumnya checklist ini
-        # tidak pernah dibaca sama sekali di sini, jadi backend TIDAK PERNAH
-        # tahu apakah laporan ini COR/NIL/AUTO.
         is_cor = self.check_cor.isChecked()
         is_nil = self.check_nil.isChecked()
         is_auto = self.check_auto.isChecked()
 
-        # BARU: cuaca saat pengamatan (self.input_cuaca_saat) dibaca dari
-        # field bebas-teks di UI (mis. "-TS RA" / "TSRA"), lalu dipecah
-        # lewat ekstrak_cuaca() (parser.py) jadi key-key yang benar-benar
-        # dipakai isi_radio_group() di fill_form2.py: weather_intensity /
-        # weather_descriptor / weather_precipitation / weather_obscuration /
-        # weather_other. Sebelumnya field ini sama sekali tidak dibaca di
-        # proses_kirim(), jadi apa pun yang diisi/diedit observer di sini
-        # tidak pernah sampai ke fill_form2.py.
         teks_cuaca_saat = self.input_cuaca_saat.text().strip()
         try:
             from parser import ekstrak_cuaca
@@ -887,12 +784,6 @@ class MetarApp(QMainWindow):
                 "weather_other": None,
             }
 
-        # Cuaca YANG LALU (self.combo_cuaca_lalu): TIDAK diproses lewat
-        # ekstrak_cuaca() karena field ini disimpan tanpa prefix "RE" (lihat
-        # isi_data_ke_form), jadi ekstrak_cuaca() akan salah mengiranya
-        # cuaca saat pengamatan. Dikirim apa adanya sebagai kode singkat
-        # (mis. "RA", "TS") sesuai asumsi value dropdown #recent-w-1 di
-        # fill_form2.py.
         teks_cuaca_lalu = self.combo_cuaca_lalu.text().strip()
 
         data_final = {
@@ -905,59 +796,41 @@ class MetarApp(QMainWindow):
             "gust": self.input_gust.text(),
             "dir_max": self.input_arah_max.text(),
             "visibility": self.input_prevailing.text(),
-            # "cloud_amount": self.input_jumlah_awan1.text(),
-            # "cloud_height": self.input_tinggi_awan1.text(),
             "clouds": data_clouds,
             "temp": self.input_temp.text(),
             "dew_point": self.input_embun.text(),
             "pressure": self.input_tekanan.text(),
-            # Status laporan (checklist COR/NIL/AUTO di UI)
             "is_cor": is_cor,
             "is_nil": is_nil,
             "is_auto": is_auto,
-            # Cuaca saat pengamatan (dipecah dari field teks bebas)
             "weather_intensity": hasil_cuaca_saat.get("weather_intensity"),
             "weather_descriptor": hasil_cuaca_saat.get("weather_descriptor"),
             "weather_precipitation": hasil_cuaca_saat.get("weather_precipitation"),
             "weather_obscuration": hasil_cuaca_saat.get("weather_obscuration"),
             "weather_other": hasil_cuaca_saat.get("weather_other"),
-            # Cuaca yang lalu (kode singkat, tanpa prefix RE)
             "recent_weather": teks_cuaca_lalu or None,
-            # ... sesuaikan key dengan apa yang diminta fill_form2.py
         }
         
-        # Jalankan proses kirim
-        # self.worker = PlaywrightWorker(data_final)
-        # self.worker.selesai.connect(self.on_kirim_selesai)
-        # self.worker.start()
         nama_user = self.user_data.get("nama", "Observer")
         id_user = self.user_data.get("id_user")
         id_metar = d['id_metar']
-        # 2. Jalankan proses kirim dengan Error Handling
         try:
-            # Menjalankan otomatisasi
             run_test(data_final, nama_user)
             
-            # Jika sampai di sini berarti SUKSES
             self.simpan_ke_history(id_user, id_metar, "SUKSES")
             QMessageBox.information(self, "Berhasil", "Data berhasil dikirim ke BMKGSatu dan riwayat tersimpan!")
             
         except Exception as e:
-            # Jika terjadi error saat otomatisasi (misal web down/timeout)
             self.simpan_ke_history(id_user, id_metar, "GAGAL")
             QMessageBox.critical(self, "Error", f"Pengiriman gagal: {str(e)}")
-        # run_test(data_final, nama_user)
-        # QMessageBox.information(self, "Berhasil", "Data sedang dikirim ke BMKGSatu!")
 
     def simpan_ke_history(self, id_user, id_metar, status):
-    # Mendapatkan waktu sekarang dalam format ISO (YYYY-MM-DD HH:MM:SS)
         waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         db_path = get_db_path()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Masukkan waktu_sekarang ke kolom waktu_send
         cursor.execute("""
             INSERT INTO AutoFill_History (id_user, id_metar, waktu_send, status) 
             VALUES (?, ?, ?, ?)""", (id_user, id_metar, waktu_sekarang, status)

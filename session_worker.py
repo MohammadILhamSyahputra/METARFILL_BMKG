@@ -1,10 +1,3 @@
-# session_worker.py
-"""
-Worker thread bersama untuk menjalankan save_session.save_auth() di
-background, supaya jendela Qt (Dashboard / Riwayat / Form Input) tidak
-"Not Responding" selama browser Playwright terbuka menunggu login manual.
-"""
-
 from PySide6.QtCore import QThread, Signal
 
 

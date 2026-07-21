@@ -34,12 +34,6 @@ def create_database():
     )
     """)
 
-    # TABEL Parsing Result
-    # Catatan perubahan dari versi sebelumnya:
-    # - cloud_cover / cloud_height / cloud_type DIPINDAH ke tabel Awan (karena
-    #   satu observasi bisa punya sampai 3 record awan sekaligus)
-    # - Ditambahkan kolom untuk Cuaca Saat Pengamatan (5 kelompok radio button)
-    #   dan Cuaca yang Lalu (recent weather)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS Parsing_Result (
         id_parsing INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,9 +71,6 @@ def create_database():
     )
     """)
 
-    # TABEL Awan (baru)
-    # Satu Parsing_Result bisa punya 1-3 record awan (jumlah awan, tinggi awan, tipe awan).
-    # urutan = 1, 2, atau 3, menandakan record awan ke berapa yang diinput di form.
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS Awan (
         id_awan INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -16,7 +16,6 @@ class DashboardPage(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. HEADER BIRU (Hanya satu kali definisi)
         header = QFrame()
         header.setStyleSheet("background-color: #4A76C0; color: white;")
         header.setFixedHeight(100)
@@ -30,21 +29,17 @@ class DashboardPage(QWidget):
         self.logo_label.setPixmap(scaled_pixmap)
         h_layout.addWidget(self.logo_label)
         
-        # Judul Stasiun (Rata Kiri)
         stasiun_label = QLabel("STASIUN METEOROLOGI KELAS III\nDHOHO KEDIRI")
         stasiun_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
         h_layout.addWidget(stasiun_label)
+        h_layout.addStretch() 
 
-        h_layout.addStretch() # Mendorong ke kanan
-
-        # Nama User (Rata Kanan)
         user_label = QLabel("Zenita Endriani    👤")
         user_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
         h_layout.addWidget(user_label)
-
         main_layout.addWidget(header)
 
-        # 2. BODY (Sidebar + Konten)
+        # BODY (Sidebar + Konten)
         body_layout = QHBoxLayout()
         body_layout.setSpacing(0)
         
@@ -59,10 +54,9 @@ class DashboardPage(QWidget):
         self.sidebar_buttons = []
         for text in ["Dashboard", "Riwayat METAR", "Perbarui Sesi Login"]:
             btn = QPushButton(text)
-            btn.setCheckable(True) # PENTING: Membuat tombol bisa "ditekan/aktif"
-            btn.setAutoExclusive(True) # PENTING: Hanya satu tombol yang bisa aktif dalam satu waktu
+            btn.setCheckable(True) 
+            btn.setAutoExclusive(True) 
             
-            # StyleSheet dengan pseudo-state :checked
             btn.setStyleSheet("""
                 QPushButton {
                     text-align: left; 

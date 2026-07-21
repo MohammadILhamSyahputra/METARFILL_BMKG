@@ -16,22 +16,16 @@ from auth_utils import get_db_path
 class RiwayatApp(QMainWindow):
     def __init__(self, user_data=None):
         super().__init__()
-        # Data user yang sedang login (dikirim dari LoginPage). Diberi nilai
-        # default supaya file ini tetap bisa dijalankan mandiri untuk testing.
         self.user_data = user_data or {"id_user": None, "nama": "Zenita Endriani", "role": "Observer"}
 
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri - Dashboard")
         self.resize(1100, 700)
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
 
-        # Main Layout: Top Header + Bottom Content
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ==========================================
-        # 1. HEADER SECTION (Serasi)
-        # ==========================================
         header = QWidget()
         header.setObjectName("Header")
         header.setMinimumHeight(80)
@@ -81,14 +75,12 @@ class RiwayatApp(QMainWindow):
 
         main_layout.addWidget(header)
 
-        # ==========================================
-        # 2. BODY SECTION (Sidebar + Content)
-        # ==========================================
+        # BODY SECTION 
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # --- SIDEBAR ---
+        # SIDEBAR 
         sidebar = QWidget()
         sidebar.setFixedWidth(220)
         sidebar.setStyleSheet("""
@@ -124,21 +116,18 @@ class RiwayatApp(QMainWindow):
         body_layout.addWidget(sidebar)
         self.logout_btn.clicked.connect(self.proses_logout)
 
-        # --- CONTENT AREA ---
+        # CONTENT AREA 
         content_container = QWidget()
         content_layout = QVBoxLayout(content_container)
         content_layout.setContentsMargins(30, 20, 30, 20)
         content_layout.setSpacing(15)
 
-        # Judul Halaman Utama (Sesuai Gambar)
         page_title = QLabel("Riwayat Pengisian Data")
         page_title.setFont(QFont("Arial", 16, QFont.Bold))
         page_title.setStyleSheet("color: #000000;")
         content_layout.addWidget(page_title)
 
-        # ==========================================
-        # NEW: FILTER SEARCH BOX AREA (Sesuai Gambar)
-        # ==========================================
+        # FILTER SEARCH BOX AREA 
         filter_card = QFrame()
         filter_card.setStyleSheet("""
             QFrame {
@@ -265,9 +254,6 @@ class RiwayatApp(QMainWindow):
         table_title.setStyleSheet("color: #000000; margin-top: 5px;")
         content_layout.addWidget(table_title)
 
-        # ==========================================
-        # 3. TABEL 4 KOLOM BARU (Sesuai Gambar)
-        # ==========================================
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(4) # Diubah menjadi 4 kolom utama
         self.table_widget.setHorizontalHeaderLabels([
@@ -279,7 +265,6 @@ class RiwayatApp(QMainWindow):
         self.table_widget.setFocusPolicy(Qt.NoFocus)
         self.table_widget.setAlternatingRowColors(True)
         
-        # Tetap mempertahankan skema warna lama (Putih & Bersih)
         self.table_widget.setStyleSheet("""
             QTableWidget {
                 background-color: #FFFFFF;
@@ -298,7 +283,6 @@ class RiwayatApp(QMainWindow):
             }
         """)
 
-        # Konfigurasi rasio kolom agar data METAR yang panjang mendapatkan ruang lega
         header_view = self.table_widget.horizontalHeader()
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive) # Waktu Pengisian
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)     # Data yang diambil (Teks Panjang)
@@ -327,7 +311,6 @@ class RiwayatApp(QMainWindow):
         self.load_riwayat()
 
     def populate_observer_filter(self):
-        """Isi dropdown Nama Observer dengan daftar observer unik dari riwayat."""
         import sqlite3
         db_path = get_db_path()
         conn = sqlite3.connect(db_path)
@@ -350,7 +333,6 @@ class RiwayatApp(QMainWindow):
         self.input_filter_observer.blockSignals(False)
 
     def cari_riwayat(self):
-        """Dipanggil saat tombol CARI diklik. Terapkan filter Observer & Tanggal."""
         observer_filter = self.input_filter_observer.currentData()
         tanggal_filter = None
         if self.chk_filter_tanggal.isChecked():
@@ -360,11 +342,10 @@ class RiwayatApp(QMainWindow):
 
     def load_riwayat(self, observer_filter=None, tanggal_filter=None):
         import sqlite3
-        db_path = get_db_path() # Pastikan path database benar
+        db_path = get_db_path() 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Query JOIN untuk mengambil semua informasi yang diperlukan
         query = """
             SELECT 
                 h.waktu_send, 
@@ -384,7 +365,6 @@ class RiwayatApp(QMainWindow):
             params.append(observer_filter)
 
         if tanggal_filter:
-            # h.waktu_send disimpan dalam format 'YYYY-MM-DD HH:MM:SS'
             conditions.append("DATE(h.waktu_send) = ?")
             params.append(tanggal_filter)
 
@@ -400,32 +380,26 @@ class RiwayatApp(QMainWindow):
         if not rows and (observer_filter or tanggal_filter):
             QMessageBox.information(self, "Info", "Tidak ada data yang cocok dengan filter yang dipilih.")
 
-        # Panggil fungsi populate yang sudah Anda buat
         self.populate_riwayat_data(rows)       
 
     def handle_menu_click(self, button_id):
         if button_id == 0:
             self.dashboard()
-        # Jika Perbarui Sesi Login (Index 2) diklik
         elif button_id == 2:
             self.perbarui_sesi_login()
 
     def perbarui_sesi_login(self):
-        # Ambil objek pengirim sinyal
         sender_obj = self.sender()
         
         if sender_obj is not None:
             from PySide6.QtWidgets import QButtonGroup, QPushButton
-            # Jika pengirimnya adalah QButtonGroup, ambil tombol aktif di dalamnya
             if isinstance(sender_obj, QButtonGroup):
                 active_btn = sender_obj.checkedButton()
                 if active_btn is not None:
                     active_btn.setChecked(False)
-            # Jika pengirimnya langsung QPushButton
             elif isinstance(sender_obj, QPushButton):
                 sender_obj.setChecked(False)
 
-        # Membuat popup dengan teks hitam tegas
         msg = QMessageBox(self)
         msg.setWindowTitle("Perbarui Sesi Login")
         msg.setIcon(QMessageBox.Information)
@@ -464,22 +438,15 @@ class RiwayatApp(QMainWindow):
         self.login_window.show()
         self.close() 
 
-    # ========================================================
-    # 4. FUNGSI PARSING DATA SQLITE KE STRUKTUR BARU
-    # ========================================================
     def populate_riwayat_data(self, data_list):
         self.table_widget.setRowCount(len(data_list))
         
         for row_idx, row_data in enumerate(data_list):
-            # 1. Kolom 0: Waktu pengisian (tetap)
             item0 = QTableWidgetItem(str(row_data[0]))
             self.table_widget.setItem(row_idx, 0, item0)
             
-            # 2. Kolom 1: Data yang diambil (METAR MENTAH, belum diparsing)
             full_metar = str(row_data[1])
 
-            # Jika teksnya terlalu panjang, potong hanya untuk tampilan kolom,
-            # namun teks METAR mentah lengkap tetap tersedia lewat tooltip
             if len(full_metar) > 60:
                 display_text = full_metar[:60] + "..."
             else:
@@ -489,11 +456,9 @@ class RiwayatApp(QMainWindow):
             item1.setToolTip(full_metar)
             self.table_widget.setItem(row_idx, 1, item1)
             
-            # 3. Kolom 2: Nama Observer
             item2 = QTableWidgetItem(str(row_data[2]))
             self.table_widget.setItem(row_idx, 2, item2)
             
-            # 4. Kolom 3: Aksi / Status (Tombol)
             status_text = str(row_data[3])
             btn_status = QPushButton(status_text)
             btn_status.setStyleSheet("""
