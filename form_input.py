@@ -387,6 +387,36 @@ class MetarApp(QMainWindow):
         vis_layout.addWidget(self.input_min_vis_dir, 3, 1)
 
         left_box.addWidget(vis_frame)
+
+        # SECTION TREND
+        trend_frame = QFrame()
+        trend_frame.setStyleSheet("""
+            QFrame {
+                border: 1px solid #D0D0D0; 
+                padding: 12px; 
+                border-radius: 8px;
+                background-color: white;
+            }
+            QLabel { border: none; background: transparent; padding: 0px; color: #000000; }
+            QLineEdit { min-height: 22px; max-height: 22px; }
+        """)
+        trend_layout = QGridLayout(trend_frame)
+        trend_layout.setSpacing(12)
+        trend_layout.setContentsMargins(12, 12, 12, 12)
+
+        trend_title = QLabel("TREND")
+        trend_title.setObjectName("SectionTitle")
+        trend_title.setStyleSheet("color: blue; font-size: 12px; font-weight: bold;")
+        trend_layout.addWidget(trend_title, 0, 0, 1, 2)
+
+        trend_layout.addWidget(QLabel("Trend"), 1, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.input_trend = QLineEdit()
+        trend_layout.addWidget(self.input_trend, 1, 1)
+
+        trend_layout.setColumnStretch(0, 0)
+        trend_layout.setColumnStretch(1, 1)
+
+        left_box.addWidget(trend_frame)
         left_box.addStretch() 
         grid_layout.addLayout(left_box, 0, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -617,8 +647,8 @@ class MetarApp(QMainWindow):
             QPushButton:hover { background-color: #D32F2F; }
         """)
         
-        kirim_btn = QPushButton("KIRIM DATA")
-        kirim_btn.setStyleSheet("""
+        self.kirim_btn = QPushButton("KIRIM DATA")
+        self.kirim_btn.setStyleSheet("""
             QPushButton {
                 background-color: blue;
                 color: white;
@@ -629,11 +659,12 @@ class MetarApp(QMainWindow):
                 font-size: 13px;
             }
             QPushButton:hover { background-color: #0000CD; }
+            QPushButton:disabled { background-color: #9FA8DA; }
         """)
 
         action_btn_layout.addWidget(batal_btn)
         action_btn_layout.addSpacing(20)
-        action_btn_layout.addWidget(kirim_btn)
+        action_btn_layout.addWidget(self.kirim_btn)
         card_layout.addLayout(action_btn_layout)
 
         scroll_area.setWidget(card_widget)
@@ -649,7 +680,7 @@ class MetarApp(QMainWindow):
         if self.data_metar:
             self.isi_data_ke_form()
 
-        kirim_btn.clicked.connect(self.proses_kirim)
+        self.kirim_btn.clicked.connect(self.proses_kirim)
         batal_btn.clicked.connect(self.batal_kirim)
 
     def batal_kirim(self):
@@ -729,10 +760,8 @@ class MetarApp(QMainWindow):
         self.input_arah_angin.setText(str(d['wind_direction']))
         self.input_kecepatan_angin.setText(str(d['wind_speed']))
         if parsed and "is_vrb" in parsed:
-        
             self.checkbox_vrb_arah.setChecked(bool(parsed.get("is_vrb")))
         else:
-         
             self._perbarui_checkbox_vrb()
         self.input_gust.setText(str(data_dict.get('wind_gust', '0')))
         self.input_arah_min.setText(str(d['wind_dir_min']))
@@ -754,10 +783,10 @@ class MetarApp(QMainWindow):
 
         self.input_temp.setText(str(d['temperature']))
         self.input_embun.setText(str(d['dewpoint']))
-        self.input_tekanan.setText(str(d['pressure']))          
+        self.input_tekanan.setText(str(d['pressure']))
+        self.input_trend.setText(str(data_dict.get('trend', 'NOSIG')))
 
     def proses_kirim(self):
-        from fill_form2 import run_test
         d = self.data_metar  
         data_clouds = []
         input_rows = [
@@ -778,6 +807,8 @@ class MetarApp(QMainWindow):
         is_nil = self.check_nil.isChecked()
         is_auto = self.check_auto.isChecked()
 
+        is_vrb = self.checkbox_vrb_arah.isChecked()
+
         teks_cuaca_saat = self.input_cuaca_saat.text().strip()
         try:
             from parser import ekstrak_cuaca
@@ -792,16 +823,26 @@ class MetarApp(QMainWindow):
 
         teks_cuaca_lalu = self.combo_cuaca_lalu.text().strip()
 
+      
+        gust_text = self.input_gust.text().strip()
+        dir_min_text = self.input_arah_min.text().strip()
+        dir_max_text = self.input_arah_max.text().strip()
+
+        gust_final = gust_text if gust_text and gust_text != "0" else None
+        dir_min_final = dir_min_text if (is_vrb and dir_min_text) else None
+        dir_max_final = dir_max_text if (is_vrb and dir_max_text) else None
+
         data_final = {
             "full_date": d['tanggal_observasi'], # Ambil dari database
             "hour": self.input_jam.text(),
             "minute": self.input_menit.text(),
             "direction": self.input_arah_angin.text(),
             "speed": self.input_kecepatan_angin.text(),
-            "dir_min": self.input_arah_min.text(),
-            "gust": self.input_gust.text(),
-            "dir_max": self.input_arah_max.text(),
+            "dir_min": dir_min_final,
+            "gust": gust_final,
+            "dir_max": dir_max_final,
             "visibility": self.input_prevailing.text(),
+            "trend": self.input_trend.text(),
             "clouds": data_clouds,
             "temp": self.input_temp.text(),
             "dew_point": self.input_embun.text(),
@@ -809,6 +850,7 @@ class MetarApp(QMainWindow):
             "is_cor": is_cor,
             "is_nil": is_nil,
             "is_auto": is_auto,
+            "is_vrb": is_vrb,
             "weather_intensity": hasil_cuaca_saat.get("weather_intensity"),
             "weather_descriptor": hasil_cuaca_saat.get("weather_descriptor"),
             "weather_precipitation": hasil_cuaca_saat.get("weather_precipitation"),
@@ -820,15 +862,41 @@ class MetarApp(QMainWindow):
         nama_user = self.user_data.get("nama", "Observer")
         id_user = self.user_data.get("id_user")
         id_metar = d['id_metar']
-        try:
-            run_test(data_final, nama_user)
-            
-            self.simpan_ke_history(id_user, id_metar, "SUKSES")
-            QMessageBox.information(self, "Berhasil", "Data berhasil dikirim ke BMKGSatu dan riwayat tersimpan!")
-            
-        except Exception as e:
-            self.simpan_ke_history(id_user, id_metar, "GAGAL")
-            QMessageBox.critical(self, "Error", f"Pengiriman gagal: {str(e)}")
+
+        self._kirim_id_user = id_user
+        self._kirim_id_metar = id_metar
+
+        from kirim_worker import KirimWorker
+
+        self.kirim_btn.setEnabled(False)
+        self.kirim_btn.setText("MENGIRIM...")
+
+        self.kirim_worker = KirimWorker(data_final, nama_user, parent=self)
+        self.kirim_worker.selesai.connect(self._kirim_selesai)
+        self.kirim_worker.gagal.connect(self._kirim_gagal)
+        self.kirim_worker.start()
+
+    def _kirim_selesai(self):
+        self.kirim_btn.setEnabled(True)
+        self.kirim_btn.setText("KIRIM DATA")
+        self.simpan_ke_history(self._kirim_id_user, self._kirim_id_metar, "SUKSES")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Berhasil")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText("Data berhasil dikirim ke BMKGSatu dan riwayat tersimpan!")
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
+
+    def _kirim_gagal(self, pesan_error):
+        self.kirim_btn.setEnabled(True)
+        self.kirim_btn.setText("KIRIM DATA")
+        self.simpan_ke_history(self._kirim_id_user, self._kirim_id_metar, "GAGAL")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Error")
+        msg.setIcon(QMessageBox.Critical)
+        msg.setText(f"Pengiriman gagal: {pesan_error}")
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
 
     def simpan_ke_history(self, id_user, id_metar, status):
         waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

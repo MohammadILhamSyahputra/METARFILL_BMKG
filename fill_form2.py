@@ -211,7 +211,7 @@ def run_test(data_cuaca, nama_observer):
                 };
 
                 for (const [id, value] of Object.entries(mapping)) {
-                    if (value === undefined || value === null) continue;
+                    if (value === undefined || value === null || value === '') continue;
                     const el = document.getElementById(id);
                     if (el) {
                         el.value = value;
@@ -224,23 +224,59 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(1)
 
             # =========================================================
-            # 9. URUTAN 9: CHECKBOX VRB 
+            # 9. URUTAN 9: CHECKBOX VRB
             # =========================================================
             print("\n[9] Mengatur kondisi VRB...")
             vrb_harus_dicentang = bool(data_cuaca.get('is_vrb', False))
 
-            if vrb_harus_dicentang:
-                page.evaluate("""() => {
-                    const cb = document.getElementById('checkbox-vrb');
-                    if (cb) {
-                        cb.checked = true;
-                        cb.dispatchEvent(new Event('change', {bubbles: true}));
-                        cb.dispatchEvent(new Event('input', {bubbles: true}));
-                    }
-                }""")
-                print("-> VRB aktif, arah angin dipertahankan.")
+            def _set_checkbox_vrb(target: bool):
+                """
+                PENTING: checkbox 'checkbox-vrb' ini bukan <input type=checkbox>
+                polos -- lihat HTML-nya, dibungkus komponen custom Vue/BootstrapVue
+                (div.custom-control.custom-checkbox). Komponen begini punya state
+                reaktif SENDIRI di sisi Vue yang menentukan tampilan checked/
+                unchecked; itu bukan cuma dibaca dari atribut/properti DOM mentah.
+
+                Cara lama (cb.checked = true lalu dispatchEvent('change'/'input'))
+                cuma mengubah DOM secara paksa dari luar, TANPA lewat handler klik
+                Vue-nya. Akibatnya:
+                  - Vue tidak pernah tahu state-nya "seharusnya" true, dan
+                  - begitu ada render ulang berikutnya (misal saat field lain -- 
+                    Awan, Cuaca Saat/Lalu, dst -- diisi setelah langkah ini), Vue
+                    menimpa ulang tampilan checkbox sesuai state internalnya
+                    sendiri (yang masih false) -- makanya di aplikasi/kode
+                    terlihat sudah True, tapi di website akhirnya balik kosong.
+
+                Solusinya: PAKAI KLIK ASLI lewat Playwright (page.locator(...).click()),
+                bukan modifikasi DOM manual. Klik asli memicu seluruh chain event
+                (mousedown/mouseup/click) yang memang didengarkan komponen Vue-nya,
+                sehingga state internalnya benar-benar berubah dan tidak akan
+                ditimpa ulang oleh render berikutnya.
+                """
+                checkbox = page.locator("#checkbox-vrb")
+                if checkbox.count() == 0:
+                    return {"found": False, "checked": None}
+
+                status_sekarang = checkbox.is_checked()
+                if status_sekarang != target:
+                    # klik labelnya (bukan input yang seringkali disembunyikan
+                    # secara visual oleh custom-checkbox), force=True untuk jaga-jaga
+                    # kalau elemen dianggap "tidak visible" oleh Playwright
+                    checkbox.click(force=True)
+                    page.wait_for_timeout(300)
+
+                return {"found": True, "checked": checkbox.is_checked()}
+
+            hasil_vrb = _set_checkbox_vrb(vrb_harus_dicentang)
+            if not hasil_vrb.get('found'):
+                print("   -> WARNING: checkbox 'checkbox-vrb' tidak ditemukan di halaman! "
+                      "Cek ulang id-nya lewat Inspect Element.")
+            elif hasil_vrb.get('checked') != vrb_harus_dicentang:
+                print(f"   -> WARNING: checkbox VRB diklik, tapi status akhirnya "
+                      f"'{hasil_vrb.get('checked')}', padahal target '{vrb_harus_dicentang}'. "
+                      f"Kemungkinan ada logic lain di halaman yang menolak/mereset klik ini.")
             else:
-                print("-> Kecepatan angin <= 2 knot, VRB tidak diaktifkan.")
+                print(f"-> Checkbox VRB berhasil diset ke {vrb_harus_dicentang}.")
 
             time.sleep(1)
 
@@ -253,21 +289,16 @@ def run_test(data_cuaca, nama_observer):
             def _centang_checkbox_status(elemen_id, aktif, label):
                 if not aktif:
                     return
-                ada = page.evaluate(
-                    "(id) => !!document.getElementById(id)", elemen_id
-                )
-                if not ada:
+                checkbox = page.locator(f"#{elemen_id}")
+                if checkbox.count() == 0:
                     print(f"   -> WARNING: checkbox '{elemen_id}' ({label}) tidak "
                           f"ditemukan di halaman. Sesuaikan id-nya di fill_form2.py.")
                     return
-                page.evaluate("""(id) => {
-                    const cb = document.getElementById(id);
-                    if (cb) {
-                        cb.checked = true;
-                        cb.dispatchEvent(new Event('change', {bubbles: true}));
-                        cb.dispatchEvent(new Event('input', {bubbles: true}));
-                    }
-                }""", elemen_id)
+                # Sama seperti checkbox VRB: klik asli lewat Playwright, bukan
+                # modifikasi DOM manual, supaya state Vue-nya benar-benar berubah.
+                if not checkbox.is_checked():
+                    checkbox.click(force=True)
+                    page.wait_for_timeout(300)
                 print(f"   -> Checkbox '{label}' dicentang.")
 
             _centang_checkbox_status("checkbox-cor", data_cuaca.get("is_cor"), "COR")
@@ -450,6 +481,25 @@ def run_test(data_cuaca, nama_observer):
 
             if not daftar_awan:
                 print("-> Tidak ada data Awan, blok ini dilewati.")
+
+            # =========================================================
+            # 9c. RE-VERIFIKASI CHECKBOX VRB SEBELUM SUBMIT
+            # =========================================================
+            # Jaga-jaga: kalau halaman me-render ulang setelah field lain
+            # (Awan, Cuaca Saat/Lalu, dst.) diisi dan itu mengembalikan
+            # checkbox VRB ke status sebelumnya, kita cek & paksa ulang di
+            # sini -- paling akhir, sesaat sebelum submit.
+            print("\n[9c] Memastikan ulang status checkbox VRB sebelum submit...")
+            hasil_vrb_akhir = _set_checkbox_vrb(vrb_harus_dicentang)
+            if not hasil_vrb_akhir.get('found'):
+                print("   -> WARNING: checkbox 'checkbox-vrb' tidak ditemukan saat verifikasi akhir!")
+            elif hasil_vrb_akhir.get('checked') != vrb_harus_dicentang:
+                print(f"   -> WARNING: checkbox VRB TERNYATA balik ke "
+                      f"'{hasil_vrb_akhir.get('checked')}' setelah field lain diisi "
+                      f"(target seharusnya '{vrb_harus_dicentang}'). Kemungkinan halaman "
+                      f"mereset status ini otomatis -- cek manual sebelum submit final.")
+            else:
+                print(f"-> Checkbox VRB terkonfirmasi tetap '{vrb_harus_dicentang}' sebelum submit.")
 
             print("-> Injeksi data selesai.")
             page.mouse.click(0, 0)
