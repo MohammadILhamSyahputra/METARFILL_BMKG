@@ -138,32 +138,6 @@ def run_test(data_cuaca, nama_observer):
             print(f"-> Kode ICAO otomatis terisi: '{nilai_icao}'")
 
             # =========================================================
-            # 5. URUTAN 5: ISI TANGGAL (BYPASS DATEPICKER LABEL)
-            # =========================================================
-            print(f"\n[5] Mengisi Tanggal: {data_cuaca['full_date']}...")
-
-            page.click("#datepicker")
-            page.keyboard.press("Control+KeyA")
-            page.keyboard.press("Backspace")
-            page.keyboard.type(data_cuaca['full_date'])  # Format: 2026-07-09
-            page.keyboard.press("Enter")
-            time.sleep(2)
-
-            # =========================================================
-            # 6 & 7. URUTAN 6 & 7: ISI JAM & MENIT
-            # =========================================================
-            print(f"\n[6 & 7] Mengisi Jam: {data_cuaca['hour']}, Menit: {data_cuaca['minute']}...")
-
-            page.wait_for_selector("#input-jam")
-            page.select_option("#input-jam", value=data_cuaca['hour'])
-
-            page.wait_for_selector("#input-menit")
-            page.select_option("#input-menit", value=data_cuaca['minute'])
-            print(f"-> Waktu berhasil diset ke {data_cuaca['hour']}:{data_cuaca['minute']}")
-
-            time.sleep(1)
-
-            # =========================================================
             # [*] KELOMPOK DROPDOWN: TREND
             # =========================================================
             print("\n[*] Mengisi Trend...")
@@ -185,6 +159,74 @@ def run_test(data_cuaca, nama_observer):
             print("Menunggu web selesai mengambil data cuaca...")
             page.wait_for_selector(".vs__spinner", state="hidden")
             time.sleep(3)
+
+            # =========================================================
+            # 5. URUTAN 5: ISI TANGGAL (METODE KLIK KALENDER ASLI)
+            # =========================================================
+            raw_date = data_cuaca.get('full_date', '') 
+            
+            if raw_date and "-" in raw_date:
+                thn, bln, tgl = raw_date.split("-")
+                # Atribut data-date di kalender BootstrapVue SELALU menggunakan format YYYY-MM-DD
+                iso_date = f"{thn}-{bln.zfill(2)}-{tgl.zfill(2)}"
+            else:
+                iso_date = raw_date
+
+            print(f"\n[5] Mengisi Tanggal (Metode Klik Fisik): {iso_date}...")
+
+            # 1. Klik input datepicker agar popup kalender terbuka
+            dp_input = page.locator("#datepicker")
+            dp_input.click()
+            time.sleep(0.5)
+
+            # 2. Paksa kalender merender bulan yang sesuai dengan tanggal target (antisipasi beda bulan)
+            page.evaluate(f"""(targetIso) => {{
+                const input = document.querySelector('#datepicker');
+                if (input) {{
+                    const wrapper = input.closest('.b-form-datepicker') || input.parentElement;
+                    const vm = wrapper ? wrapper.__vue__ : null;
+                    // activeYMD mengatur bulan/tahun apa yang sedang terbuka di layar kalender
+                    if (vm && 'activeYMD' in vm) {{
+                        vm.activeYMD = targetIso; 
+                    }}
+                }}
+            }}""", iso_date)
+            time.sleep(0.5)
+
+            # 3. Cari tombol tanggal di dalam popup kalender dan KLIK secara fisik!
+            target_cell = page.locator(f"[data-date='{iso_date}']").first
+            
+            if target_cell.count() > 0:
+                target_cell.click(force=True)
+                print(f"-> Berhasil mengklik tanggal {iso_date} langsung dari popup kalender!")
+            else:
+                print(f"-> WARNING: Tanggal {iso_date} tidak ada di layar. Melakukan Force Deep-Inject.")
+                # Fallback brutal jika UI kalender gagal muncul
+                page.evaluate(f"""(targetIso) => {{
+                    let vm = document.querySelector('#datepicker').__vue__;
+                    while(vm) {{
+                        for (let k of Object.keys(vm.$data || {{}})) {{
+                            if(k.toLowerCase().includes('tanggal') || k.toLowerCase().includes('date')) vm.$data[k] = targetIso;
+                        }}
+                        vm = vm.$parent;
+                    }}
+                }}""", iso_date)
+
+            time.sleep(1)
+
+            # =========================================================
+            # 6 & 7. URUTAN 6 & 7: ISI JAM & MENIT
+            # =========================================================
+            print(f"\n[6 & 7] Mengisi Jam: {data_cuaca['hour']}, Menit: {data_cuaca['minute']}...")
+
+            page.wait_for_selector("#input-jam")
+            page.select_option("#input-jam", value=data_cuaca['hour'])
+
+            page.wait_for_selector("#input-menit")
+            page.select_option("#input-menit", value=data_cuaca['minute'])
+            print(f"-> Waktu berhasil diset ke {data_cuaca['hour']}:{data_cuaca['minute']}")
+
+            time.sleep(1)
 
             # =========================================================
             # 8. URUTAN 8: SINKRONISASI DATA ANGIN, VISIBILITY, SUHU, TEKANAN

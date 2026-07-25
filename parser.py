@@ -171,9 +171,16 @@ def parse_metar(line, tahun=None, bulan=None):
     }
 
     now = datetime.now()
-    tahun_final = tahun if tahun else now.year
-    bulan_final = bulan if bulan else now.month
-    hasil["full_date"] = f"{tahun_final}-{str(bulan_final).zfill(2)}-{day.zfill(2)}"
+    #tahun_final = tahun if tahun else now.year
+    #bulan_final = bulan if bulan else now.month
+
+    #hasil["full_date"] = f"{tahun_final}-{str(bulan_final).zfill(2)}-{day.zfill(2)}"
+    #hasil["label_date"] = f"{bulan_final}/{int(day)}/{tahun_final}"
+
+    tahun_final = int(tahun) if tahun is not None else now.year
+    bulan_final = int(bulan) if bulan is not None else now.month
+
+    hasil["full_date"] = f"{tahun_final}-{str(bulan_final).zfill(2)}-{str(day).zfill(2)}"
     hasil["label_date"] = f"{bulan_final}/{int(day)}/{tahun_final}"
 
     hasil["raw_metar"] = line.strip()
