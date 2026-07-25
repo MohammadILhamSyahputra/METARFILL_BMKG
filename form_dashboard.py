@@ -24,6 +24,7 @@ class DashboardApp(QMainWindow):
         self.setWindowTitle("Stasiun Meteorologi Kelas III Dhoho Kediri - Dashboard")
         self.resize(1100, 700)
         self.setStyleSheet("background-color: #F0F4F8; font-family: 'Segoe UI', Arial, sans-serif;")
+        self.jalankan_pembersihan_otomatis()
 
         # Main Layout: Top Header + Bottom Content
         main_layout = QVBoxLayout()
@@ -326,7 +327,7 @@ class DashboardApp(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(9)
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "tinggi awan", "Temp", "Embun", "id_metar", "Aksi"
+            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "Tinggi Awan", "Temp", "Embun", "id_metar", "Aksi"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
@@ -588,6 +589,23 @@ class DashboardApp(QMainWindow):
             self.buka_riwayat()
         elif button_id == 2:
             self.perbarui_sesi_login()
+
+    def jalankan_pembersihan_otomatis(self):
+        try:
+            db_path = get_db_path()
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # Hapus data yang lebih lama dari 30 hari
+            cursor.execute("DELETE FROM METAR WHERE tanggal_observasi < date('now', '-30 days')")
+            cursor.execute("DELETE FROM Awan WHERE id_parsing NOT IN (SELECT id_parsing FROM Parsing_Result)")
+            cursor.execute("DELETE FROM Parsing_Result WHERE id_metar IS NULL OR id_metar NOT IN (SELECT id_metar FROM METAR)")
+            cursor.execute("DELETE FROM AutoFill_History WHERE id_metar IS NOT NULL AND id_metar NOT IN (SELECT id_metar FROM METAR)")
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Gagal membersihkan data otomatis: {e}")
 
     def perbarui_sesi_login(self):
         self.menu_group.button(0).setChecked(True)

@@ -106,6 +106,43 @@ def create_database():
     conn.close()
     print("Sukses! Seluruh struktur tabel dan relasi ERD berhasil dibuat.")
 
+    bersihkan_data_lama()
+
+def bersihkan_data_lama():
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # 1. Menghapus data METAR yang tanggal_observasinya lebih dari 30 hari
+    cursor.execute("""
+        DELETE FROM METAR 
+        WHERE tanggal_observasi < date('now', '-30 days')
+    """)
+    
+    # 2. Membersihkan tabel Awan yang id_parsing-nya sudah tidak memiliki relasi di Parsing_Result atau METAR
+    cursor.execute("""
+        DELETE FROM Awan 
+        WHERE id_parsing NOT IN (SELECT id_parsing FROM Parsing_Result)
+    """)
+    
+    # 3. Membersihkan tabel Parsing_Result yang yatim (tidak punya relasi ke METAR)
+    cursor.execute("""
+        DELETE FROM Parsing_Result 
+        WHERE id_metar IS NULL 
+        OR id_metar NOT IN (SELECT id_metar FROM METAR)
+    """)
+    
+    # 4. Membersihkan tabel AutoFill_History yang id_metar-nya sudah terhapus atau tidak valid
+    cursor.execute("""
+        DELETE FROM AutoFill_History 
+        WHERE id_metar IS NOT NULL 
+        AND id_metar NOT IN (SELECT id_metar FROM METAR)
+    """)
+    
+    conn.commit()
+    conn.close()
+    print("Pembersihan data lama (> 30 hari) untuk METAR, Parsing_Result, Awan, dan AutoFill_History berhasil dilakukan.")
+
 
 if __name__ == "__main__":
     create_database()
