@@ -8,11 +8,13 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QDialog, QLineEdit, QComboBox, QMessageBox, QFrame, QAbstractItemView,
-    QButtonGroup
+    QButtonGroup, QStackedWidget
 )
 from PySide6.QtGui import QFont, QPixmap
 
 from auth_utils import hash_password, get_db_path
+from monitoring_page import MonitoringPage
+from session_worker import SessionUpdateWorker
 
 
 class UserModal(QDialog):
@@ -243,7 +245,7 @@ class AdminApp(QMainWindow):
         self.menu_group = QButtonGroup(self)
         self.menu_group.setExclusive(True)
 
-        menu_items = ["Manajemen Pengguna"]
+        menu_items = ["Manajemen Pengguna", "Monitoring Data", "Perbarui Sesi Login"]
         for idx, item in enumerate(menu_items):
             btn = QPushButton(item)
             btn.setCheckable(True)
@@ -251,6 +253,14 @@ class AdminApp(QMainWindow):
             sidebar_layout.addWidget(btn)
             if item == "Manajemen Pengguna":
                 btn.setChecked(True)
+
+        # Index halaman terakhir yang benar-benar aktif di QStackedWidget
+        # (dipakai untuk mengembalikan tombol tercentang setelah "Perbarui
+        # Sesi Login" diklik, karena menu itu bukan halaman, cuma aksi).
+        self._last_page_idx = 0
+
+        # Pindah halaman konten sesuai menu yang dipilih (index menu_group == index QStackedWidget)
+        self.menu_group.idClicked.connect(self.pindah_halaman)
 
         sidebar_layout.addStretch()
 
@@ -334,7 +344,15 @@ class AdminApp(QMainWindow):
         self.table.verticalHeader().setVisible(False)
 
         content_layout.addWidget(self.table)
-        body_layout.addWidget(content_container)
+
+        # --- STACKED WIDGET: menampung halaman "Manajemen Pengguna" (lama)
+        # dan halaman "Monitoring Data" (baru) di area konten yang sama ---
+        self.stacked_pages = QStackedWidget()
+        self.stacked_pages.addWidget(content_container)     # index 0
+        self.monitoring_page = MonitoringPage()
+        self.stacked_pages.addWidget(self.monitoring_page)  # index 1
+
+        body_layout.addWidget(self.stacked_pages)
         main_layout.addLayout(body_layout)
 
         central_widget = QWidget()
@@ -342,6 +360,56 @@ class AdminApp(QMainWindow):
         self.setCentralWidget(central_widget)
 
         self.load_table_data()
+
+    def pindah_halaman(self, idx):
+        """idx mengikuti urutan menu_items:
+        0 = Manajemen Pengguna, 1 = Monitoring Data (keduanya halaman biasa),
+        2 = Perbarui Sesi Login (bukan halaman, cuma aksi -> tetap di halaman
+        terakhir yang aktif)."""
+        if idx == 2:
+            # Kembalikan tombol tercentang ke halaman terakhir yang aktif
+            self.menu_group.button(self._last_page_idx).setChecked(True)
+            self.perbarui_sesi_login()
+            return
+
+        self._last_page_idx = idx
+        self.stacked_pages.setCurrentIndex(idx)
+
+    # ---------------------------------------------------------------
+    # PERBARUI SESI LOGIN (sama seperti alur di form_dashboard.py)
+    # ---------------------------------------------------------------
+    def perbarui_sesi_login(self):
+        self.tampilkan_pesan(
+            "Perbarui Sesi Login",
+            "Browser akan terbuka untuk login BMKGSatu.\n\n"
+            "Silakan login secara manual, lalu klik tombol 'Resume' atau 'F8' pada "
+            "jendela Playwright Inspector agar sesi login tersimpan.",
+            jenis="info",
+        )
+
+        self.session_worker = SessionUpdateWorker()
+        self.session_worker.selesai.connect(self.on_sesi_login_selesai)
+        self.session_worker.start()
+
+    def on_sesi_login_selesai(self, sukses, pesan):
+        judul = "Berhasil" if sukses else "Gagal"
+        jenis = "success" if sukses else "error"
+        self.tampilkan_pesan(judul, pesan, jenis=jenis)
+
+    def tampilkan_pesan(self, judul, pesan, jenis="info"):
+        msg = QMessageBox(self)
+        msg.setWindowTitle(judul)
+        msg.setText(pesan)
+        if jenis == "success":
+            msg.setIcon(QMessageBox.Information)
+        elif jenis == "warning":
+            msg.setIcon(QMessageBox.Warning)
+        elif jenis == "error":
+            msg.setIcon(QMessageBox.Critical)
+        else:
+            msg.setIcon(QMessageBox.Information)
+        msg.setStyleSheet("QLabel{color: black;} QPushButton{color: black;}")
+        msg.exec()
 
     # ---------------------------------------------------------------
     # CRUD - terhubung langsung ke database_metar.db (tabel Users)
@@ -463,6 +531,23 @@ class AdminApp(QMainWindow):
         self.login_window = LoginPage()
         self.login_window.show()
         self.close()
+
+    def closeEvent(self, event):
+        worker = getattr(self, "session_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.quit()
+            worker.wait(2000)
+
+        # Bersihkan juga worker (fetch data & sesi login) di halaman Monitoring Data
+        mp = getattr(self, "monitoring_page", None)
+        if mp is not None:
+            for attr in ("worker", "session_worker"):
+                w = getattr(mp, attr, None)
+                if w is not None and w.isRunning():
+                    w.quit()
+                    w.wait(2000)
+
+        super().closeEvent(event)
 
 
 if __name__ == "__main__":

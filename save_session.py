@@ -16,6 +16,8 @@ def save_auth():
         page.pause() 
 
         # Menyimpan status login (cookies, local storage, dll) ke file JSON
+        # -> auth_state.json ini yang jadi SATU-SATUNYA sumber kredensial,
+        #    dipakai oleh monitoring_page.py lewat auth_utils.build_auth_config()
         context.storage_state(path=auth_path)
         print(f"Status login berhasil disimpan ke '{auth_path}'!")
         
