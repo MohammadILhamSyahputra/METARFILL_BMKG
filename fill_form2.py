@@ -36,8 +36,6 @@ def tutup_modal_cuaca(page):
     """
     HTML yang diberikan tidak menyertakan tombol submit/close modal secara eksplisit,
     jadi di sini dicoba beberapa selector umum untuk modal BootstrapVue.
-    Sesuaikan teks tombol ('OK', 'Simpan', 'Submit', 'Tutup') jika ternyata beda
-    di form aslinya.
     """
     kemungkinan_teks = ["OK", "Simpan", "Submit", "Tutup", "Selesai"]
     for teks in kemungkinan_teks:
@@ -48,14 +46,10 @@ def tutup_modal_cuaca(page):
             return
     # Fallback: tekan Escape kalau tidak ada tombol yang cocok
     page.keyboard.press("Escape")
-    print("-> Modal cuaca ditutup lewat tombol Escape (tombol submit tidak ditemukan, cek selector jika data tidak tersimpan).")
+    print("-> Modal cuaca ditutup lewat tombol Escape.")
 
 
 def run_test(data_cuaca, nama_observer):
-    # if not os.path.exists("auth_state.json"):
-    #     print("Error: File 'auth_state.json' tidak ditemukan!")
-    #     return
-
     with sync_playwright() as p:
         browser = None
         ditutup_manual = threading.Event()
@@ -90,7 +84,7 @@ def run_test(data_cuaca, nama_observer):
 
             # Tunggu indikator loading bawaan stasiun selesai
             page.wait_for_selector(".vs__spinner", state="hidden")
-            time.sleep(3)
+            time.sleep(2)
 
             # =========================================================
             # 2. URUTAN 2: ISI NAMA OBSERVER
@@ -114,7 +108,6 @@ def run_test(data_cuaca, nama_observer):
                 print(f"-> Nama Observer '{nama_observer}' Berhasil dipilih!")
             else:
                 print(f"-> ERROR: Nama '{nama_observer}' tidak ditemukan di list!")
-                print(f"List tersedia: {observer_option.all_text_contents()}")
 
             time.sleep(1)
 
@@ -130,7 +123,7 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(1)
 
             # =========================================================
-            # 4. URUTAN 4: VERIFIKASI FIELD ICAO (AUTOMATIC READONLY)
+            # 4. URUTAN 4: VERIFIKASI FIELD ICAO
             # =========================================================
             print("\n[4] Memeriksa nilai otomatis ICAO...")
             page.wait_for_selector("#input-icao")
@@ -142,7 +135,6 @@ def run_test(data_cuaca, nama_observer):
             # =========================================================
             print("\n[*] Mengisi Trend...")
             target_trend = "NOSIG"
-            print("-> Mengisi Trend via JavaScript bypass...")
             page.wait_for_selector("select[data-v-1010a25b]#input-type", state="attached")
             page.evaluate(f"""() => {{
                 const trendSelect = document.querySelector('select[data-v-1010a25b]#input-type');
@@ -154,38 +146,34 @@ def run_test(data_cuaca, nama_observer):
             }}""")
             print(f"-> Trend Berhasil dipaksa set ke '{target_trend}'!")
 
-            time.sleep(1)
-
-            print("Menunggu web selesai mengambil data cuaca...")
+            # 🛑 TUNGGU SELURUH PROSES FETCHING / RESET DARI WEB SELESAI TOTAL 🛑
+            print("Menunggu web selesai mengambil data cuaca & mereset form...")
             page.wait_for_selector(".vs__spinner", state="hidden")
             time.sleep(3)
 
             # =========================================================
-            # 5. URUTAN 5: ISI TANGGAL (METODE KLIK KALENDER ASLI)
+            # 5. URUTAN 5: ISI TANGGAL (SETELAH RESET WEB SELESAI)
             # =========================================================
             raw_date = data_cuaca.get('full_date', '') 
             
             if raw_date and "-" in raw_date:
                 thn, bln, tgl = raw_date.split("-")
-                # Atribut data-date di kalender BootstrapVue SELALU menggunakan format YYYY-MM-DD
                 iso_date = f"{thn}-{bln.zfill(2)}-{tgl.zfill(2)}"
             else:
                 iso_date = raw_date
 
-            print(f"\n[5] Mengisi Tanggal (Metode Klik Fisik): {iso_date}...")
+            print(f"\n[5] Mengisi Tanggal Filter: {iso_date}...")
 
-            # 1. Klik input datepicker agar popup kalender terbuka
             dp_input = page.locator("#datepicker")
             dp_input.click()
             time.sleep(0.5)
 
-            # 2. Paksa kalender merender bulan yang sesuai dengan tanggal target (antisipasi beda bulan)
+            # Paksa kalender render bulan target
             page.evaluate(f"""(targetIso) => {{
                 const input = document.querySelector('#datepicker');
                 if (input) {{
                     const wrapper = input.closest('.b-form-datepicker') || input.parentElement;
                     const vm = wrapper ? wrapper.__vue__ : null;
-                    // activeYMD mengatur bulan/tahun apa yang sedang terbuka di layar kalender
                     if (vm && 'activeYMD' in vm) {{
                         vm.activeYMD = targetIso; 
                     }}
@@ -193,26 +181,27 @@ def run_test(data_cuaca, nama_observer):
             }}""", iso_date)
             time.sleep(0.5)
 
-            # 3. Cari tombol tanggal di dalam popup kalender dan KLIK secara fisik!
+            # Klik cell tanggal pada popup kalender
             target_cell = page.locator(f"[data-date='{iso_date}']").first
-            
             if target_cell.count() > 0:
                 target_cell.click(force=True)
-                print(f"-> Berhasil mengklik tanggal {iso_date} langsung dari popup kalender!")
+                print(f"-> Berhasil mengklik tanggal {iso_date} dari kalender!")
             else:
-                print(f"-> WARNING: Tanggal {iso_date} tidak ada di layar. Melakukan Force Deep-Inject.")
-                # Fallback brutal jika UI kalender gagal muncul
+                print(f"-> Fallback: Menyuntikkan tanggal {iso_date} via JS.")
                 page.evaluate(f"""(targetIso) => {{
-                    let vm = document.querySelector('#datepicker').__vue__;
-                    while(vm) {{
-                        for (let k of Object.keys(vm.$data || {{}})) {{
-                            if(k.toLowerCase().includes('tanggal') || k.toLowerCase().includes('date')) vm.$data[k] = targetIso;
+                    const input = document.querySelector('#datepicker');
+                    if (input) {{
+                        const wrapper = input.closest('.b-form-datepicker') || input.parentElement;
+                        const vm = input.__vue__ || (wrapper ? wrapper.__vue__ : null);
+                        if (vm) {{
+                            if ('selectedYMD' in vm) vm.selectedYMD = targetIso;
+                            if ('value' in vm) vm.value = targetIso;
+                            if (typeof vm.$emit === 'function') vm.$emit('input', targetIso);
                         }}
-                        vm = vm.$parent;
                     }}
                 }}""", iso_date)
 
-            time.sleep(1)
+            time.sleep(1.5) # Beri jeda kecil setelah ubah tanggal
 
             # =========================================================
             # 6 & 7. URUTAN 6 & 7: ISI JAM & MENIT
@@ -226,7 +215,15 @@ def run_test(data_cuaca, nama_observer):
             page.select_option("#input-menit", value=data_cuaca['minute'])
             print(f"-> Waktu berhasil diset ke {data_cuaca['hour']}:{data_cuaca['minute']}")
 
-            time.sleep(1)
+            print("\n[!] Menunggu sinkronisasi server akibat perubahan tanggal/waktu...")
+            time.sleep(1.5)
+
+            try:
+                # Tunggu sampai animasi loading web benar-benar hilang (maks 15 detik)
+                page.wait_for_selector(".vs__spinner", state="hidden", timeout=15000)
+            except:
+                pass
+            time.sleep(2)
 
             # =========================================================
             # 8. URUTAN 8: SINKRONISASI DATA ANGIN, VISIBILITY, SUHU, TEKANAN
@@ -272,76 +269,36 @@ def run_test(data_cuaca, nama_observer):
             vrb_harus_dicentang = bool(data_cuaca.get('is_vrb', False))
 
             def _set_checkbox_vrb(target: bool):
-                """
-                PENTING: checkbox 'checkbox-vrb' ini bukan <input type=checkbox>
-                polos -- lihat HTML-nya, dibungkus komponen custom Vue/BootstrapVue
-                (div.custom-control.custom-checkbox). Komponen begini punya state
-                reaktif SENDIRI di sisi Vue yang menentukan tampilan checked/
-                unchecked; itu bukan cuma dibaca dari atribut/properti DOM mentah.
-
-                Cara lama (cb.checked = true lalu dispatchEvent('change'/'input'))
-                cuma mengubah DOM secara paksa dari luar, TANPA lewat handler klik
-                Vue-nya. Akibatnya:
-                  - Vue tidak pernah tahu state-nya "seharusnya" true, dan
-                  - begitu ada render ulang berikutnya (misal saat field lain -- 
-                    Awan, Cuaca Saat/Lalu, dst -- diisi setelah langkah ini), Vue
-                    menimpa ulang tampilan checkbox sesuai state internalnya
-                    sendiri (yang masih false) -- makanya di aplikasi/kode
-                    terlihat sudah True, tapi di website akhirnya balik kosong.
-
-                Solusinya: PAKAI KLIK ASLI lewat Playwright (page.locator(...).click()),
-                bukan modifikasi DOM manual. Klik asli memicu seluruh chain event
-                (mousedown/mouseup/click) yang memang didengarkan komponen Vue-nya,
-                sehingga state internalnya benar-benar berubah dan tidak akan
-                ditimpa ulang oleh render berikutnya.
-                """
                 checkbox = page.locator("#checkbox-vrb")
                 if checkbox.count() == 0:
                     return {"found": False, "checked": None}
 
                 status_sekarang = checkbox.is_checked()
                 if status_sekarang != target:
-                    # klik labelnya (bukan input yang seringkali disembunyikan
-                    # secara visual oleh custom-checkbox), force=True untuk jaga-jaga
-                    # kalau elemen dianggap "tidak visible" oleh Playwright
                     checkbox.click(force=True)
                     page.wait_for_timeout(300)
 
                 return {"found": True, "checked": checkbox.is_checked()}
 
             hasil_vrb = _set_checkbox_vrb(vrb_harus_dicentang)
-            if not hasil_vrb.get('found'):
-                print("   -> WARNING: checkbox 'checkbox-vrb' tidak ditemukan di halaman! "
-                      "Cek ulang id-nya lewat Inspect Element.")
-            elif hasil_vrb.get('checked') != vrb_harus_dicentang:
-                print(f"   -> WARNING: checkbox VRB diklik, tapi status akhirnya "
-                      f"'{hasil_vrb.get('checked')}', padahal target '{vrb_harus_dicentang}'. "
-                      f"Kemungkinan ada logic lain di halaman yang menolak/mereset klik ini.")
-            else:
+            if hasil_vrb.get('found') and hasil_vrb.get('checked') == vrb_harus_dicentang:
                 print(f"-> Checkbox VRB berhasil diset ke {vrb_harus_dicentang}.")
 
             time.sleep(1)
 
             # =========================================================
-            # 9b. URUTAN 9b: CHECKBOX STATUS LAPORAN -- COR / NIL / AUTO (BARU)
+            # 9b. URUTAN 9b: CHECKBOX STATUS LAPORAN (COR / NIL / AUTO)
             # =========================================================
-      
             print("\n[9b] Mengatur checkbox status laporan (COR/NIL/AUTO)...")
 
             def _centang_checkbox_status(elemen_id, aktif, label):
                 if not aktif:
                     return
                 checkbox = page.locator(f"#{elemen_id}")
-                if checkbox.count() == 0:
-                    print(f"   -> WARNING: checkbox '{elemen_id}' ({label}) tidak "
-                          f"ditemukan di halaman. Sesuaikan id-nya di fill_form2.py.")
-                    return
-                # Sama seperti checkbox VRB: klik asli lewat Playwright, bukan
-                # modifikasi DOM manual, supaya state Vue-nya benar-benar berubah.
-                if not checkbox.is_checked():
+                if checkbox.count() > 0 and not checkbox.is_checked():
                     checkbox.click(force=True)
                     page.wait_for_timeout(300)
-                print(f"   -> Checkbox '{label}' dicentang.")
+                    print(f"   -> Checkbox '{label}' dicentang.")
 
             _centang_checkbox_status("checkbox-cor", data_cuaca.get("is_cor"), "COR")
             _centang_checkbox_status("checkbox-nil", data_cuaca.get("is_nil"), "NIL")
@@ -360,19 +317,9 @@ def run_test(data_cuaca, nama_observer):
             )
 
             if ada_data_cuaca_saat_ini:
-                semua_tombol_cuaca = page.locator("button.button-weather")
-                jumlah_tombol = semua_tombol_cuaca.count()
-                print(f"   -> Ditemukan {jumlah_tombol} tombol 'button-weather' di halaman.")
-
                 tombol_cuaca = page.locator("button.button-weather:not([disabled])").first
-                if tombol_cuaca.count() == 0:
-                    print("   -> WARNING: Tidak ada tombol Cuaca Saat Pengamatan yang aktif "
-                          "(semua disabled?). Blok cuaca saat pengamatan dilewati.")
-                else:
+                if tombol_cuaca.count() > 0:
                     tombol_cuaca.click()
-                    print("-> Modal Cuaca Saat Pengamatan dibuka (slot pertama yang aktif).")
-
-                    # Modal BootstrapVue biasanya butuh sedikit waktu untuk animasi masuk
                     page.wait_for_selector("div[id*='__BVID__'][id*='modal_body']", state="visible")
                     modal = page.locator("div[id*='__BVID__'][id*='modal_body']")
 
@@ -384,8 +331,6 @@ def run_test(data_cuaca, nama_observer):
 
                     tutup_modal_cuaca(page)
                 time.sleep(1)
-            else:
-                print("-> Tidak ada data Cuaca Saat Pengamatan, blok ini dilewati.")
 
             # =========================================================
             # 11. URUTAN 11: BLOK CUACA YANG LALU
@@ -395,9 +340,6 @@ def run_test(data_cuaca, nama_observer):
                 print(f"\n[11] Mengisi Cuaca yang Lalu: '{recent_weather}'...")
                 page.wait_for_selector("#recent-w-1")
                 page.select_option("#recent-w-1", value=recent_weather)
-                print("-> Cuaca yang Lalu berhasil diisi.")
-            else:
-                print("\n[11] Tidak ada data Cuaca yang Lalu, blok ini dilewati.")
 
             time.sleep(1)
 
@@ -410,7 +352,6 @@ def run_test(data_cuaca, nama_observer):
             for idx, awan in enumerate(daftar_awan, start=1):
                 print(f"   -> Record awan #{idx}: {awan}")
 
-        
                 page.wait_for_selector("#clouds-jumlah")
                 if awan.get("amount"):
                     page.select_option("#clouds-jumlah", value=awan["amount"])
@@ -428,120 +369,30 @@ def run_test(data_cuaca, nama_observer):
 
                 time.sleep(1)
 
-          
                 tabel_awan = page.locator("table:has(#clouds-jumlah)")
                 jumlah_baris_sebelum = tabel_awan.locator("tbody tr").count()
 
                 tombol_tambah = tabel_awan.locator("button.btn-success:has(svg.feather-plus)").first
                 tombol_tambah.scroll_into_view_if_needed()
-                is_disabled = tombol_tambah.evaluate(
-                    "(btn) => btn.disabled || btn.classList.contains('disabled')"
-                )
-
-                diagnostik = tombol_tambah.evaluate("""(btn) => {
-                    const amount = document.getElementById('clouds-jumlah');
-                    const height = document.getElementById('cloud_height');
-                    const type = document.getElementById('select-type');
-                    const dasar = {
-                        amount_value: amount ? amount.value : null,
-                        height_value: height ? height.value : null,
-                        type_value: type ? type.value : null,
-                    };
-
-                    if (!btn || !btn.__vue__) return { dasar, found: false };
-
-                    const pola = /awan|cloud|jumlah|tinggi|tipe|height|amount|disabled|valid|record|row|type/i;
-                    let vm = btn.__vue__;
-                    const chain = [];
-                    let depth = 0;
-                    while (vm && depth < 8) {
-                        const dataKeys = Object.keys(vm.$data || {});
-                        const computedKeys = vm.$options.computed ? Object.keys(vm.$options.computed) : [];
-                        const propsKeys = Object.keys(vm.$props || {});
-
-                        const relevantData = {};
-                        dataKeys.forEach((k) => {
-                            if (pola.test(k)) {
-                                try { relevantData[k] = JSON.parse(JSON.stringify(vm[k])); }
-                                catch (e) { relevantData[k] = String(vm[k]); }
-                            }
-                        });
-                        const relevantComputed = {};
-                        computedKeys.forEach((k) => {
-                            if (pola.test(k)) {
-                                try { relevantComputed[k] = JSON.parse(JSON.stringify(vm[k])); }
-                                catch (e) { relevantComputed[k] = String(vm[k]); }
-                            }
-                        });
-                        const relevantProps = {};
-                        propsKeys.forEach((k) => {
-                            if (pola.test(k)) {
-                                try { relevantProps[k] = JSON.parse(JSON.stringify(vm[k])); }
-                                catch (e) { relevantProps[k] = String(vm[k]); }
-                            }
-                        });
-
-                        chain.push({
-                            depth: depth,
-                            componentName: (vm.$options && (vm.$options.name || vm.$options._componentTag)) || 'anonymous',
-                            dataKeys: dataKeys,
-                            computedKeys: computedKeys,
-                            relevantData: relevantData,
-                            relevantComputed: relevantComputed,
-                            relevantProps: relevantProps,
-                        });
-                        vm = vm.$parent;
-                        depth += 1;
-                    }
-                    return { dasar, found: true, chain };
-                }""")
-                print(f"   -> Diagnostik field: {diagnostik}")
+                is_disabled = tombol_tambah.evaluate("(btn) => btn.disabled || btn.classList.contains('disabled')")
 
                 if not is_disabled:
                     tombol_tambah.click()
                 else:
-                    print(f"   -> Tombol masih disabled, mencoba paksa klik untuk record #{idx}...")
                     tombol_tambah.evaluate("""(btn) => {
                         btn.disabled = false;
                         btn.removeAttribute('disabled');
                         btn.classList.remove('disabled');
-                        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
-                        btn.dispatchEvent(clickEvent);
+                        btn.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
                     }""")
 
                 time.sleep(1)
 
-                # 4. VERIFIKASI NYATA (scope benar ke tabel Awan)
-                jumlah_baris_sesudah = tabel_awan.locator("tbody tr").count()
-                if jumlah_baris_sesudah > jumlah_baris_sebelum:
-                    print(f"   -> Record awan #{idx} TERKONFIRMASI bertambah "
-                          f"({jumlah_baris_sebelum} -> {jumlah_baris_sesudah} baris di tabel Awan).")
-                else:
-                    print(f"   -> WARNING: Record awan #{idx} TIDAK bertambah "
-                          f"(tetap {jumlah_baris_sesudah} baris di tabel Awan). Record ini DILEWATI -- "
-                          f"kirim baris 'Diagnostik field' di atas supaya bisa dicari akar masalahnya.")
-
-            if not daftar_awan:
-                print("-> Tidak ada data Awan, blok ini dilewati.")
-
             # =========================================================
             # 9c. RE-VERIFIKASI CHECKBOX VRB SEBELUM SUBMIT
             # =========================================================
-            # Jaga-jaga: kalau halaman me-render ulang setelah field lain
-            # (Awan, Cuaca Saat/Lalu, dst.) diisi dan itu mengembalikan
-            # checkbox VRB ke status sebelumnya, kita cek & paksa ulang di
-            # sini -- paling akhir, sesaat sebelum submit.
             print("\n[9c] Memastikan ulang status checkbox VRB sebelum submit...")
-            hasil_vrb_akhir = _set_checkbox_vrb(vrb_harus_dicentang)
-            if not hasil_vrb_akhir.get('found'):
-                print("   -> WARNING: checkbox 'checkbox-vrb' tidak ditemukan saat verifikasi akhir!")
-            elif hasil_vrb_akhir.get('checked') != vrb_harus_dicentang:
-                print(f"   -> WARNING: checkbox VRB TERNYATA balik ke "
-                      f"'{hasil_vrb_akhir.get('checked')}' setelah field lain diisi "
-                      f"(target seharusnya '{vrb_harus_dicentang}'). Kemungkinan halaman "
-                      f"mereset status ini otomatis -- cek manual sebelum submit final.")
-            else:
-                print(f"-> Checkbox VRB terkonfirmasi tetap '{vrb_harus_dicentang}' sebelum submit.")
+            _set_checkbox_vrb(vrb_harus_dicentang)
 
             print("-> Injeksi data selesai.")
             page.mouse.click(0, 0)
@@ -550,24 +401,18 @@ def run_test(data_cuaca, nama_observer):
             print("Pengiriman selesai.")
 
             batas_waktu_detik = 120
-            print(f"Observer memiliki waktu maksimal {batas_waktu_detik} detik untuk memeriksa data "
-                  f"-- atau tutup browser kapan saja untuk langsung lanjut tanpa menunggu.")
-
             waktu_mulai = time.time()
             while time.time() - waktu_mulai < batas_waktu_detik:
                 if ditutup_manual.is_set():
-                    print("-> Browser sudah ditutup manual oleh observer, tidak perlu menunggu sisa waktu.")
+                    print("-> Browser ditutup manual oleh observer.")
                     break
                 time.sleep(0.5)
-            else:
-                print(f"-> Waktu {batas_waktu_detik} detik habis, browser akan ditutup otomatis.")
 
         except Exception as e:
             print(f"Terjadi error: {e}")
             raise e
 
         finally:
-
             if browser and not ditutup_manual.is_set():
                 try:
                     browser.close()
@@ -581,12 +426,10 @@ if __name__ == "__main__":
         "hour": "00",
         "minute": "00",
 
-        # Status laporan (BARU)
         "is_cor": False,
         "is_nil": False,
         "is_auto": False,
 
-        # Angin
         "direction": "090",
         "speed": "05",
         "gust": "",        
@@ -594,25 +437,20 @@ if __name__ == "__main__":
         "dir_max": "",
         "is_vrb": False,
 
-        # Visibility
         "visibility": "8000",
 
-        # Suhu / Titik embun / Tekanan
         "temp": "27",
         "dew_point": "24",
         "pressure": "1010",
 
-        # Cuaca Saat Pengamatan 
         "weather_intensity": None,
         "weather_descriptor": None,
         "weather_precipitation": None,
         "weather_obscuration": None,
         "weather_other": None,
 
-        # Cuaca yang Lalu 
         "recent_weather": None,
 
-        # Awan, maksimal 3 record
         "clouds": [
             {"amount": "FEW", "height": "010", "type": ""},
             {"amount": "SCT", "height": "025", "type": "CB"},
