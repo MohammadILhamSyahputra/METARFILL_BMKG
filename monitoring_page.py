@@ -193,6 +193,11 @@ class MonitoringPage(QWidget):
                 font-size: 12px;
                 min-height: 28px;
             }
+            QLineEdit:disabled {
+                background-color: #F0F0F0;  /* Warna latar abu-abu terang */
+                color: #555555;             /* Warna teks menjadi abu-abu gelap agar tetap terbaca jelas */
+                border: 1px solid #CCCCCC;  /* Warna border yang lebih soft */
+            }
             QComboBox QAbstractItemView {
                 background-color: #FFFFFF;
                 color: #000000;
@@ -237,6 +242,7 @@ class MonitoringPage(QWidget):
         col2.addWidget(QLabel("Balai"))
         self.input_balai = QLineEdit("Balai III")
         self.input_balai.setMinimumWidth(90)
+        self.input_balai.setEnabled(False)
         col2.addWidget(self.input_balai)
         form_layout.addLayout(col2, 1)
 
@@ -245,6 +251,7 @@ class MonitoringPage(QWidget):
         col3.addWidget(QLabel("Provinsi"))
         self.input_provinsi = QLineEdit("Jawa Timur")
         self.input_provinsi.setMinimumWidth(90)
+        self.input_provinsi.setEnabled(False)
         col3.addWidget(self.input_provinsi)
         form_layout.addLayout(col3, 1)
 

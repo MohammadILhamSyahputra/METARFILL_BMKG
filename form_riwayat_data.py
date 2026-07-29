@@ -461,9 +461,15 @@ class RiwayatApp(QMainWindow):
             
             status_text = str(row_data[3])
             btn_status = QPushButton(status_text)
-            btn_status.setStyleSheet("""
-                QPushButton {
-                    background-color: #0070C0; 
+            if status_text.upper() == "SUKSES":
+                bg_color = "#0070C0"     # Biru
+                hover_color = "#005691"  # Biru lebih gelap saat hover
+            else:
+                bg_color = "#D9534F"     # Merah
+                hover_color = "#C9302C"  # Merah lebih gelap saat hover
+            btn_status.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {bg_color}; 
                     color: white; 
                     font-weight: bold; 
                     font-size: 11px;
@@ -471,8 +477,8 @@ class RiwayatApp(QMainWindow):
                     border-radius: 4px; 
                     margin: 2px 10px; 
                     padding: 6px;
-                }
-                QPushButton:hover { background-color: #005691; }
+                }}
+                QPushButton:hover {{ background-color: {hover_color}; }}
             """)
             
             container_widget = QWidget()
