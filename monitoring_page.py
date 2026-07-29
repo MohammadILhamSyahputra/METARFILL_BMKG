@@ -183,14 +183,20 @@ class MonitoringPage(QWidget):
         # ---- Form Filter ----
         form_frame = QWidget()
         form_frame.setStyleSheet("""
-            QLabel { color: #000000; background-color: transparent; font-size: 12px; }
+            QLabel { color: #000000; background-color: transparent; font-size: 12px; font-weight: bold; }
             QComboBox, QLineEdit, QDateEdit {
                 background-color: #FFFFFF;
                 color: #000000;
                 border: 1px solid #A0A0A0;
-                border-radius: 4px;
-                padding: 5px;
+                border-radius: 6px;
+                padding: 6px 10px;
                 font-size: 12px;
+                min-height: 28px;
+            }
+            QLineEdit:disabled {
+                background-color: #F0F0F0;  /* Warna latar abu-abu terang */
+                color: #555555;             /* Warna teks menjadi abu-abu gelap agar tetap terbaca jelas */
+                border: 1px solid #CCCCCC;  /* Warna border yang lebih soft */
             }
             QComboBox QAbstractItemView {
                 background-color: #FFFFFF;
@@ -218,32 +224,36 @@ class MonitoringPage(QWidget):
             }
         """)
         form_layout = QHBoxLayout(form_frame)
-        form_layout.setSpacing(14)
+        form_layout.setSpacing(16)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        from PySide6.QtWidgets import QSizePolicy
 
         # Jenis Monitoring
         col1 = QVBoxLayout()
         col1.addWidget(QLabel("Jenis Monitoring"))
         self.combo_jenis = QComboBox()
         self.combo_jenis.addItems(list(RESOURCE_MAP.keys()))
-        self.combo_jenis.setFixedWidth(130)
+        self.combo_jenis.setMinimumWidth(160)
         col1.addWidget(self.combo_jenis)
-        form_layout.addLayout(col1)
+        form_layout.addLayout(col1, 2)
 
         # Balai (otomatis)
         col2 = QVBoxLayout()
         col2.addWidget(QLabel("Balai"))
-        self.input_balai = QLineEdit("3")
-        self.input_balai.setFixedWidth(70)
+        self.input_balai = QLineEdit("Balai III")
+        self.input_balai.setMinimumWidth(90)
+        self.input_balai.setEnabled(False)
         col2.addWidget(self.input_balai)
-        form_layout.addLayout(col2)
+        form_layout.addLayout(col2, 1)
 
         # Provinsi (otomatis)
         col3 = QVBoxLayout()
         col3.addWidget(QLabel("Provinsi"))
-        self.input_provinsi = QLineEdit("15")
-        self.input_provinsi.setFixedWidth(70)
+        self.input_provinsi = QLineEdit("Jawa Timur")
+        self.input_provinsi.setMinimumWidth(90)
+        self.input_provinsi.setEnabled(False)
         col3.addWidget(self.input_provinsi)
-        form_layout.addLayout(col3)
+        form_layout.addLayout(col3, 1)
 
         # Tanggal Mulai
         col4 = QVBoxLayout()
@@ -252,8 +262,9 @@ class MonitoringPage(QWidget):
         self.date_awal.setCalendarPopup(True)
         self.date_awal.setDisplayFormat("yyyy-MM-dd")
         self.date_awal.setDate(QDate.currentDate().addDays(-1))
+        self.date_awal.setMinimumWidth(130)
         col4.addWidget(self.date_awal)
-        form_layout.addLayout(col4)
+        form_layout.addLayout(col4, 2)
 
         # Tanggal Akhir
         col5 = QVBoxLayout()
@@ -262,8 +273,9 @@ class MonitoringPage(QWidget):
         self.date_akhir.setCalendarPopup(True)
         self.date_akhir.setDisplayFormat("yyyy-MM-dd")
         self.date_akhir.setDate(QDate.currentDate())
+        self.date_akhir.setMinimumWidth(130)
         col5.addWidget(self.date_akhir)
-        form_layout.addLayout(col5)
+        form_layout.addLayout(col5, 2)
 
         calendar_style = """
             QCalendarWidget QAbstractItemView {
@@ -281,7 +293,6 @@ class MonitoringPage(QWidget):
             if calendar is not None:
                 calendar.setStyleSheet(calendar_style)
 
-        form_layout.addStretch()
 
         # Tombol Ambil Data
         col6 = QVBoxLayout()
@@ -290,7 +301,7 @@ class MonitoringPage(QWidget):
         self.btn_ambil.setStyleSheet("""
             QPushButton {
                 background-color: #0077D4; color: white; font-weight: bold;
-                border: none; border-radius: 4px; padding: 6px 16px; font-size: 12px;
+                border: none; border-radius: 4px; padding: 6px 16px; font-size: 12px; min-height: 30px;
             }
             QPushButton:hover { background-color: #005FA3; }
             QPushButton:disabled { background-color: #A0C4E4; }
@@ -298,7 +309,7 @@ class MonitoringPage(QWidget):
         self.btn_ambil.clicked.connect(self.ambil_data)
         col6.addWidget(self.btn_ambil)
         form_layout.addLayout(col6)
-
+        # form_layout.addStretch()
         layout.addWidget(form_frame)
 
         # ---- Baris status + tombol export ----
@@ -313,7 +324,7 @@ class MonitoringPage(QWidget):
         self.btn_export.setStyleSheet("""
             QPushButton {
                 background-color: #2ECC71; color: white; font-weight: bold;
-                border: none; border-radius: 4px; padding: 6px 16px; font-size: 12px;
+                border: none; border-radius: 6px; padding: 8px 20px; font-size: 13px;
             }
             QPushButton:hover { background-color: #27AE60; }
             QPushButton:disabled { background-color: #A9DFBF; }
