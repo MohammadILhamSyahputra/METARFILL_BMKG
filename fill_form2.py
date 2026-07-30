@@ -400,7 +400,7 @@ def run_test(data_cuaca, nama_observer):
             time.sleep(5)
             print("Pengiriman selesai.")
 
-            batas_waktu_detik = 120
+            batas_waktu_detik = 75
             waktu_mulai = time.time()
             while time.time() - waktu_mulai < batas_waktu_detik:
                 if ditutup_manual.is_set():
