@@ -661,13 +661,13 @@ class DashboardApp(QMainWindow):
             now = datetime.now()
             current_month_year = now.strftime("%Y-%m")
 
-            query = "SELECT COUNT(*) FROM METAR WHERE strftime('%Y-%m', tanggal_observasi) = ?"
-            cursor.execute(query, (current_month_year,))
-            total_data_bulan_ini = cursor.fetchone()[0]
-            self.lbl_jumlah_data.setText(str(total_data_bulan_ini))
-            # cursor.execute("SELECT COUNT(*) FROM METAR")
-            # total_data = cursor.fetchone()[0]
-            # self.lbl_jumlah_data.setText(str(total_data))
+            # query = "SELECT COUNT(*) FROM METAR WHERE strftime('%Y-%m', tanggal_observasi) = ?"
+            # cursor.execute(query, (current_month_year,))
+            # total_data_bulan_ini = cursor.fetchone()[0]
+            # self.lbl_jumlah_data.setText(str(total_data_bulan_ini))
+            cursor.execute("SELECT COUNT(*) FROM METAR")
+            total_data = cursor.fetchone()[0]
+            self.lbl_jumlah_data.setText(str(total_data))
 
             cursor.execute("SELECT waktu_observasi FROM METAR ORDER BY tanggal_observasi DESC, waktu_observasi DESC LIMIT 1")
             row_waktu = cursor.fetchone()
