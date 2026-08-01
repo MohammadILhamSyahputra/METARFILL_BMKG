@@ -50,8 +50,15 @@ def tutup_modal_cuaca(page):
     print("-> Modal cuaca ditutup lewat tombol Escape.")
 
 
-def run_test(data_cuaca, nama_observer):
+def run_test(data_cuaca, nama_observer, event_selesai_manual=None):
     """
+    event_selesai_manual (opsional): threading.Event yang di-set() dari LUAR
+    (tombol "Selesai" di GUI aplikasi) untuk memberi tahu fungsi ini bahwa
+    observer sudah selesai, TANPA bergantung pada sinyal dari browser
+    (page.close/context.close/browser.disconnected/is_connected()). Ini jalur
+    paling andal, karena menutup window Chromium secara manual terbukti tidak
+    selalu mengirim sinyal apapun ke Playwright.
+
     Catatan penting soal kecepatan respons:
 
     Playwright's `with sync_playwright() as p:` menutup koneksi ke driver
@@ -98,6 +105,17 @@ def run_test(data_cuaca, nama_observer):
                 page = context.new_page()
                 page.on("close", lambda _: ditutup_manual.set())
                 page.set_default_timeout(60000)
+
+                # PENTING: begitu observer menutup window secara manual (klik X),
+                # banyak web form (kemungkinan termasuk BMKGSatu) punya listener
+                # 'beforeunload' yang memicu dialog konfirmasi native "Leave site?".
+                # Selama dialog itu belum dijawab, browser TIDAK benar-benar
+                # tertutup -> event 'disconnected'/'close' juga ikut nyangkut,
+                # itulah gap lama yang cuma muncul di penutupan manual (bukan
+                # penutupan otomatis lewat browser.close() kita sendiri, yang
+                # memang bypass dialog semacam ini). Auto-accept semua dialog
+                # supaya window langsung benar-benar tertutup tanpa menunggu.
+                page.on("dialog", lambda dialog: dialog.accept())
 
                 print("Membuka halaman form...")
                 url = "https://bmkgsatu.bmkg.go.id/meteorologi/metarspeci"
@@ -434,22 +452,27 @@ def run_test(data_cuaca, nama_observer):
                 print("-> Injeksi data selesai.")
                 page.mouse.click(0, 0)
 
+                try:
+                    page.evaluate("window.onbeforeunload = null;")
+                except Exception:
+                    pass
+
                 time.sleep(1)
                 print("Menunggu observer submit & menutup browser...")
 
-                # Observer diberi waktu maksimal 75 detik untuk review, klik submit
-                # di BMKGSatu, lalu menutup browser sendiri. Begitu browser/tab
-                # ditutup, loop ini harus langsung berhenti (bukan menunggu 75 detik
-                # penuh) supaya notifikasi & riwayat muncul cepat.
                 batas_waktu_detik = 75
                 interval_polling = 0.2
                 waktu_mulai = time.time()
                 while time.time() - waktu_mulai < batas_waktu_detik:
+
+                    if event_selesai_manual is not None and event_selesai_manual.is_set():
+                        ditutup_manual.set()
+                        print("-> Observer klik 'Selesai' di aplikasi.")
+                        break
                     if ditutup_manual.is_set():
                         print("-> Browser ditutup manual oleh observer.")
                         break
-                    # Jaring pengaman kedua: cek langsung status koneksi browser,
-                    # jangan cuma pasif menunggu callback 'disconnected'/'close'.
+
                     try:
                         if not browser.is_connected():
                             ditutup_manual.set()
@@ -459,10 +482,16 @@ def run_test(data_cuaca, nama_observer):
                         ditutup_manual.set()
                         print("-> Browser terdeteksi sudah tertutup (exception saat cek koneksi).")
                         break
+
+                    try:
+                        if len(context.pages) == 0:
+                            ditutup_manual.set()
+                            print("-> Tab/halaman observer sudah tertutup (context.pages == 0).")
+                            break
+                    except Exception:
+                        pass
                     time.sleep(interval_polling)
 
-                # >>> LAPOR SUKSES DI SINI JUGA -- SEBELUM keluar dari blok 'with'
-                # (yang berpotensi lambat kalau browser sudah mati mendadak). <<<
                 _lapor_sukses()
 
             except Exception as e:
@@ -475,20 +504,13 @@ def run_test(data_cuaca, nama_observer):
                         browser.close()
                     except Exception:
                         pass
-            # keluar dari 'with sync_playwright() as p:' terjadi DI SINI ->
-            # p.stop() dipanggil, berpotensi lambat, TAPI ini jalan di thread
-            # terpisah (daemon) sehingga tidak memblokir caller run_test().
+
 
     threading.Thread(target=_worker_playwright, daemon=True).start()
 
-    # Tunggu SAMPAI sukses/gagal terdeteksi (biasanya < 1 detik setelah
-    # browser ditutup) -- BUKAN menunggu thread Playwright benar-benar
-    # selesai teardown.
     status, pesan = hasil_queue.get()
     if status == "gagal":
         raise Exception(pesan)
-    # status == "sukses" -> return normal, caller (KirimWorker) bisa langsung
-    # emit sinyal & simpan riwayat pengiriman tanpa delay.
 
 
 if __name__ == "__main__":

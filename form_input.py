@@ -663,9 +663,31 @@ class MetarApp(QMainWindow):
             QPushButton:disabled { background-color: #9FA8DA; }
         """)
 
+        self.selesai_btn = QPushButton("SELESAI DI BROWSER")
+        self.selesai_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 40px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #1B5E20; }
+        """)
+        # Tombol ini baru muncul setelah observer klik "KIRIM DATA" (browser
+        # BMKGSatu terbuka). Diklik observer setelah selesai submit & menutup
+        # browser, supaya notifikasi & riwayat langsung tersimpan tanpa
+        # bergantung pada deteksi window-close dari browser (yang tidak selalu
+        # bisa diandalkan).
+        self.selesai_btn.hide()
+
         action_btn_layout.addWidget(batal_btn)
         action_btn_layout.addSpacing(20)
         action_btn_layout.addWidget(self.kirim_btn)
+        action_btn_layout.addSpacing(20)
+        action_btn_layout.addWidget(self.selesai_btn)
         card_layout.addLayout(action_btn_layout)
 
         scroll_area.setWidget(card_widget)
@@ -894,9 +916,18 @@ class MetarApp(QMainWindow):
         self.kirim_worker.gagal.connect(self._kirim_gagal)
         self.kirim_worker.start()
 
+        self.selesai_btn.setEnabled(True)
+        self.selesai_btn.show()
+        try:
+            self.selesai_btn.clicked.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        self.selesai_btn.clicked.connect(self.kirim_worker.tandai_selesai_manual)
+
     def _kirim_selesai(self):
         self.kirim_btn.setEnabled(True)
         self.kirim_btn.setText("KIRIM DATA")
+        self.selesai_btn.hide()
         self.simpan_ke_history(self._kirim_id_user, self._kirim_id_metar, "SUKSES")
         msg = QMessageBox(self)
         msg.setWindowTitle("Berhasil")
@@ -908,6 +939,7 @@ class MetarApp(QMainWindow):
     def _kirim_gagal(self, pesan_error):
         self.kirim_btn.setEnabled(True)
         self.kirim_btn.setText("KIRIM DATA")
+        self.selesai_btn.hide()
         self.simpan_ke_history(self._kirim_id_user, self._kirim_id_metar, "GAGAL")
         msg = QMessageBox(self)
         msg.setWindowTitle("Error")

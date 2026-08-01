@@ -327,7 +327,7 @@ class DashboardApp(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(9)
         self.table_widget.setHorizontalHeaderLabels([
-            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "Tinggi Awan", "Temp", "Embun", "id_metar", "Aksi"
+            "Waktu", "Arah Angin", "Kecepatan", "Visibility", "Tinggi Awan", "Temp", "Embun", "ID METAR", "Aksi"
         ])
         
         self.table_widget.setSelectionMode(QAbstractItemView.NoSelection)
