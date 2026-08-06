@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QPushButton,QLineEdit, QFrame, QGridLayout, QTableWidget, 
     QTableWidgetItem, QHeaderView, QButtonGroup, QAbstractItemView,
-    QMessageBox, QDateEdit
+    QMessageBox, QDateEdit, QComboBox
 )
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QFont
@@ -13,7 +13,10 @@ from PySide6.QtGui import QPixmap, QFont
 from auth_utils import get_db_path
 from session_worker import SessionUpdateWorker
 from metar_fetch_worker import MetarFetchWorker
-from parser import parse_metar, simpan_ke_db, proses_data_untuk_tanggal
+from parser import (
+    parse_metar, simpan_ke_db, proses_data_untuk_tanggal,
+    SUMBER_AVIATION_LAMA, SUMBER_WEB_AVIATION,
+)
 import requests
 from datetime import datetime
 
@@ -298,6 +301,31 @@ class DashboardApp(QMainWindow):
                 }
             """)
         
+        # --- SWITCH SUMBER DATA (aviation.bmkg.go.id / web-aviation.bmkg.go.id) ---
+        self.combo_sumber_data = QComboBox()
+        self.combo_sumber_data.addItem("Sumber: aviation.bmkg.go.id", SUMBER_AVIATION_LAMA)
+        self.combo_sumber_data.addItem("Sumber: web-aviation.bmkg.go.id", SUMBER_WEB_AVIATION)
+        self.combo_sumber_data.setFixedWidth(220)
+        self.combo_sumber_data.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #A0A0A0;
+                border-radius: 6px;
+                padding: 6px 10px;
+                background-color: white;
+                color: black;
+                font-size: 13px;
+                font-weight: bold;
+                min-height: 35px;
+                max-height: 35px;
+                margin-top: 15px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: black;
+                selection-background-color: #E0E8F5;
+            }
+        """)
+
         self.btn_ambil_data = QPushButton("Ambil Data Baru")
         btn_ambil_data = self.btn_ambil_data
         btn_ambil_data.setFixedWidth(150)
@@ -320,6 +348,7 @@ class DashboardApp(QMainWindow):
         # Menyusun urutan elemen dari kiri ke kanan
         input_button_layout.addWidget(table_title)
         input_button_layout.addWidget(self.input_ambil_data, 1) 
+        input_button_layout.addWidget(self.combo_sumber_data)
         input_button_layout.addWidget(btn_ambil_data)
         
         content_layout.addLayout(input_button_layout)
@@ -479,13 +508,18 @@ class DashboardApp(QMainWindow):
         self._label_tanggal_aktif = f"{tanggal:02d}-{bulan:02d}-{tahun}"
         self._tanggal_filter_aktif = f"{tahun}-{str(bulan).zfill(2)}-{str(tanggal).zfill(2)}"
 
+        sumber_terpilih = self.combo_sumber_data.currentData()
+
         self.btn_ambil_data.setEnabled(False)
         self.input_ambil_data.setEnabled(False)
+        self.combo_sumber_data.setEnabled(False)
 
         self._tampilkan_loading(f"Mengambil data METAR tanggal {self._label_tanggal_aktif}...")
         self.statusBar().showMessage(f"Mengambil data METAR tanggal {self._label_tanggal_aktif}...")
 
-        self._fetch_worker = MetarFetchWorker(tahun, bulan, tanggal, parent=self)
+        self._fetch_worker = MetarFetchWorker(
+            tahun, bulan, tanggal, sumber=sumber_terpilih, parent=self
+        )
         self._fetch_worker.selesai.connect(self._on_fetch_selesai)
         self._fetch_worker.gagal.connect(self._on_fetch_gagal)
         self._fetch_worker.start()
@@ -495,6 +529,7 @@ class DashboardApp(QMainWindow):
         self.statusBar().clearMessage()
         self.btn_ambil_data.setEnabled(True)
         self.input_ambil_data.setEnabled(True)
+        self.combo_sumber_data.setEnabled(True)
 
     def _on_fetch_selesai(self, ringkasan):
         self._selesaikan_fetch_ui()

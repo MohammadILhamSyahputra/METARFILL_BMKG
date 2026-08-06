@@ -71,6 +71,142 @@ def ambil_data_metar_bmkg(tahun, bulan, tanggal):
     return df_terfilter
 
 
+# ==============================================================================
+# SUMBER DATA ALTERNATIF: web-aviation.bmkg.go.id/web/metar_speci.php
+# ==============================================================================
+# Halaman ini pakai proteksi CSRF token (khas Laravel), jadi alurnya:
+#   1) GET halaman metar_speci.php -> ambil cookie sesi + nilai _token dari
+#      hidden input <input type="hidden" name="_token" value="...">
+#   2) POST ke URL yang sama dengan form-data: stasiun, from, to, metar, speci,
+#      _token -> server membalas HTML yang berisi <table id="table_id"> berisi
+#      baris-baris data METAR/SPECI.
+
+_WEB_AVIATION_URL = "https://web-aviation.bmkg.go.id/web/metar_speci.php"
+
+_web_aviation_session = requests.Session()
+_web_aviation_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+})
+
+
+def _ambil_token_web_aviation():
+    """Membuka halaman metar_speci.php untuk mendapatkan cookie sesi baru
+    dan nilai CSRF token (_token) yang wajib disertakan saat POST."""
+    response = _web_aviation_session.get(_WEB_AVIATION_URL, timeout=30)
+    response.raise_for_status()
+
+    try:
+        soup = BeautifulSoup(response.text, 'lxml')
+    except Exception:
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+    token_input = soup.find('input', attrs={'name': '_token'})
+    if token_input is not None and token_input.get('value'):
+        return token_input['value']
+
+    # Fallback: sebagian halaman Laravel menaruh token di meta tag
+    meta_token = soup.find('meta', attrs={'name': 'csrf-token'})
+    if meta_token is not None and meta_token.get('content'):
+        return meta_token['content']
+
+    # Fallback terakhir: cari lewat regex mentah di HTML
+    match = re.search(r'name=["\']_token["\']\s+value=["\']([^"\']+)["\']', response.text)
+    if match:
+        return match.group(1)
+
+    raise RuntimeError("Tidak dapat menemukan CSRF token (_token) di halaman metar_speci.php")
+
+
+def ambil_data_metar_web_aviation(tahun, bulan, tanggal, stasiun="WARD"):
+    """Mengambil data METAR dari web-aviation.bmkg.go.id/web/metar_speci.php
+    untuk satu hari penuh (00:00 s.d. 23:59 UTC) pada stasiun tertentu.
+    Mengembalikan DataFrame dengan kolom yang sama seperti
+    ambil_data_metar_bmkg agar bisa dipakai oleh proses_data_untuk_tanggal
+    tanpa perubahan lebih lanjut."""
+
+    tanggal_str = str(tanggal).zfill(2)
+    bulan_str = str(bulan).zfill(2)
+    tahun_str = str(tahun)
+
+    dari_waktu = f"{tahun_str}-{bulan_str}-{tanggal_str}T00:00"
+    sampai_waktu = f"{tahun_str}-{bulan_str}-{tanggal_str}T23:59"
+
+    print(f"\nMencoba mengunduh data dari: {_WEB_AVIATION_URL} "
+          f"(stasiun={stasiun}, {dari_waktu} s/d {sampai_waktu})")
+
+    try:
+        token = _ambil_token_web_aviation()
+
+        payload = {
+            "stasiun": stasiun,
+            "from": dari_waktu,
+            "to": sampai_waktu,
+            "metar": "SA",
+            "speci": "SP",
+            "_token": token,
+        }
+
+        response = _web_aviation_session.post(_WEB_AVIATION_URL, data=payload, timeout=30)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f" Gagal terhubung ke server web-aviation BMKG: {e}")
+        return None
+
+    try:
+        soup = BeautifulSoup(response.text, 'lxml')
+    except Exception:
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+    tabel = soup.find('table', id='table_id')
+    if tabel is None:
+        print(" [Info] Tabel data (table_id) tidak ditemukan di respons web-aviation.")
+        return None
+
+    tbody = tabel.find('tbody')
+    if tbody is None:
+        print(" [Info] Tidak ada tbody pada tabel hasil web-aviation.")
+        return None
+
+    records = []
+    for baris in tbody.find_all('tr'):
+        kolom = baris.find_all('td')
+        if len(kolom) < 4:
+            continue
+
+        data_metar = kolom[0].get_text(strip=True)
+        waktu_observasi = kolom[3].get_text(strip=True)
+
+        # Hanya proses baris METAR; baris SPECI sengaja dilewati di sini
+        # supaya tidak ikut terhitung sebagai "gagal_parse" oleh parse_metar
+        # (yang memang hanya mengenali baris berisi kata "METAR").
+        if "METAR" not in data_metar:
+            continue
+
+        records.append([waktu_observasi, data_metar])
+
+    if not records:
+        print(f" [Info] Tidak ditemukan data METAR untuk stasiun {stasiun} "
+              f"tanggal {tanggal_str}/{bulan_str}/{tahun_str} di web-aviation.")
+        return None
+
+    header = ["Waktu (UTC)", "Data METAR"]
+    df_terfilter = pd.DataFrame(records, columns=header)
+
+    return df_terfilter
+
+
+# Sumber data yang tersedia untuk dipilih dari dashboard.
+SUMBER_AVIATION_LAMA = "aviation"        # aviation.bmkg.go.id
+SUMBER_WEB_AVIATION = "web_aviation"     # web-aviation.bmkg.go.id
+
+
+def ambil_data_metar(tahun, bulan, tanggal, sumber=SUMBER_AVIATION_LAMA, stasiun="WARD"):
+    """Dispatcher: mengambil data METAR dari sumber yang dipilih."""
+    if sumber == SUMBER_WEB_AVIATION:
+        return ambil_data_metar_web_aviation(tahun, bulan, tanggal, stasiun=stasiun)
+    return ambil_data_metar_bmkg(tahun, bulan, tanggal)
+
+
 _WX_INTENSITY_RE = r'(?P<intensity>[-+]|VC)?'
 _WX_DESCRIPTOR_RE = r'(?P<descriptor>MI|PR|BC|DR|BL|SH|TS|FZ)?'
 _WX_PHENOMENA_RE = r'(?P<phenomena>(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+)?'
@@ -325,11 +461,11 @@ def simpan_ke_db(data, raw_line=None, conn=None):
     print("Data lengkap berhasil disimpan ke database!")
     return "success"
 
-def proses_data_untuk_tanggal(tahun, bulan, tanggal):
+def proses_data_untuk_tanggal(tahun, bulan, tanggal, sumber=SUMBER_AVIATION_LAMA, stasiun="WARD"):
 
     ringkasan = {"total_ditemukan": 0, "baru": 0, "sudah_ada": 0, "gagal_parse": 0, "diperbarui": 0}
 
-    df = ambil_data_metar_bmkg(tahun, bulan, tanggal)
+    df = ambil_data_metar(tahun, bulan, tanggal, sumber=sumber, stasiun=stasiun)
     if df is None or df.empty:
         return ringkasan
 
