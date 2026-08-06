@@ -301,11 +301,11 @@ class DashboardApp(QMainWindow):
                 }
             """)
         
-        # --- SWITCH SUMBER DATA (aviation.bmkg.go.id / web-aviation.bmkg.go.id) ---
+# --- SWITCH SUMBER DATA (aviation.bmkg.go.id / web-aviation.bmkg.go.id) ---
         self.combo_sumber_data = QComboBox()
         self.combo_sumber_data.addItem("Sumber: aviation.bmkg.go.id", SUMBER_AVIATION_LAMA)
-        self.combo_sumber_data.addItem("Sumber: web-aviation.bmkg.go.id", SUMBER_WEB_AVIATION)
-        self.combo_sumber_data.setFixedWidth(220)
+        self.combo_sumber_data.addItem("Sumber: web-aviation.bmkg.go.id", SUMBER_WEB_AVIATION)        
+        self.combo_sumber_data.setFixedWidth(350)         
         self.combo_sumber_data.setStyleSheet("""
             QComboBox {
                 border: 1px solid #A0A0A0;
@@ -313,16 +313,43 @@ class DashboardApp(QMainWindow):
                 padding: 6px 10px;
                 background-color: white;
                 color: black;
-                font-size: 13px;
+                font-size: 15px; /* Disamakan dengan QDateEdit (sebelumnya 13px) */
                 font-weight: bold;
                 min-height: 35px;
                 max-height: 35px;
                 margin-top: 15px;
             }
+            /* Styling untuk kotak panah di sebelah kanan */
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 30px;
+                border-left-width: 1px;
+                border-left-color: #A0A0A0;
+                border-left-style: solid;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+                background-color: #F0F4F8;
+            }
+            QComboBox::drop-down:hover {
+                background-color: #E0E8F5;
+            }
+            /* Styling untuk ikon segitiga panah */
+            QComboBox::down-arrow {
+                image: none;
+                width: 0px;
+                height: 0px;
+                border-style: solid;
+                border-width: 5px 4px 0 4px;
+                border-color: #555555 transparent transparent transparent;
+            }
+            /* Styling untuk list pilihan saat diklik */
             QComboBox QAbstractItemView {
                 background-color: white;
                 color: black;
-                selection-background-color: #E0E8F5;
+                selection-background-color: #0070C0; /* Disamakan dengan tema biru tombol/kalender */
+                selection-color: white;
+                border: 1px solid #A0A0A0;
             }
         """)
 

@@ -175,6 +175,8 @@ class LoginPage(QWidget):
         
         self.input_username = QLineEdit()
         self.input_username.setPlaceholderText("Masukkan Nama Lengkap Anda")
+
+        self.input_username.returnPressed.connect(self.proses_login)
         
         self.username_layout.addWidget(self.lbl_user)
         self.username_layout.addWidget(self.input_username)
@@ -198,6 +200,8 @@ class LoginPage(QWidget):
         self.input_password = QLineEdit()
         self.input_password.setPlaceholderText("Masukkan Password")
         self.input_password.setEchoMode(QLineEdit.Password)
+
+        self.input_password.returnPressed.connect(self.proses_login)
         
         self.password_layout.addWidget(self.lbl_pass)
         self.password_layout.addWidget(self.input_password)
