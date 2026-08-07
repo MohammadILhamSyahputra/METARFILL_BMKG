@@ -368,6 +368,17 @@ def parse_metar(line, tahun=None, bulan=None):
 
     hasil.update(ekstrak_cuaca(metar_code))
 
+    # ==========================================
+    # PENAMBAHAN KODE DETEKSI TREND DI SINI
+    # ==========================================
+    hasil["trend"] = "NOSIG"  # Nilai default jika tidak ada
+    if "NOSIG" in metar_code:
+        hasil["trend"] = "NOSIG"
+    elif "BECMG" in metar_code:
+        hasil["trend"] = "BECMG"
+    elif "TEMPO" in metar_code:
+        hasil["trend"] = "TEMPO"
+
     return hasil
 
 def simpan_ke_db(data, raw_line=None, conn=None):

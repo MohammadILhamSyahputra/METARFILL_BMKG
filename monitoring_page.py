@@ -361,6 +361,11 @@ class MonitoringPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table)
 
+        # ---- Keterangan Satuan Angka Tabel ----
+        self.label_keterangan = QLabel("* Catatan: Angka yang ditampilkan pada tabel merupakan hasil durasi waktu pengiriman data SINOPTIK/METAR ke GTS dalam satuan menit.")
+        self.label_keterangan.setStyleSheet("color: #666666; font-size: 11px; font-style: italic; margin-bottom: 4px;")
+        layout.addWidget(self.label_keterangan)
+
     def tampilkan_pesan(self, judul, pesan, jenis="info"):
         msg = QMessageBox(self)
         msg.setWindowTitle(judul)

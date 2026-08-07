@@ -185,22 +185,6 @@ def run_test(data_cuaca, nama_observer, event_selesai_manual=None):
                 nilai_icao = page.locator("#input-icao").input_value()
                 print(f"-> Kode ICAO otomatis terisi: '{nilai_icao}'")
 
-                # =========================================================
-                # [*] KELOMPOK DROPDOWN: TREND
-                # =========================================================
-                print("\n[*] Mengisi Trend...")
-                target_trend = "NOSIG"
-                page.wait_for_selector("select[data-v-1010a25b]#input-type", state="attached")
-                page.evaluate(f"""() => {{
-                    const trendSelect = document.querySelector('select[data-v-1010a25b]#input-type');
-                    if (trendSelect) {{
-                        trendSelect.value = '{target_trend}';
-                        trendSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        trendSelect.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    }}
-                }}""")
-                print(f"-> Trend Berhasil dipaksa set ke '{target_trend}'!")
-
                 # 🛑 TUNGGU SELURUH PROSES FETCHING / RESET DARI WEB SELESAI TOTAL 🛑
                 print("Menunggu web selesai mengambil data cuaca & mereset form...")
                 page.wait_for_selector(".vs__spinner", state="hidden")
@@ -397,6 +381,22 @@ def run_test(data_cuaca, nama_observer, event_selesai_manual=None):
                     page.select_option("#recent-w-1", value=recent_weather)
 
                 time.sleep(1)
+
+                # =========================================================
+                # [*] KELOMPOK DROPDOWN: TREND
+                # =========================================================
+                print("\n[*] Mengisi Trend...")
+                target_trend = "NOSIG"
+                page.wait_for_selector("select[data-v-1010a25b]#input-type", state="attached")
+                page.evaluate(f"""() => {{
+                    const trendSelect = document.querySelector('select[data-v-1010a25b]#input-type');
+                    if (trendSelect) {{
+                        trendSelect.value = '{target_trend}';
+                        trendSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        trendSelect.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    }}
+                }}""")
+                print(f"-> Trend Berhasil dipaksa set ke '{target_trend}'!")
 
                 # =========================================================
                 # 12. URUTAN 12: BLOK AWAN (MAKSIMAL 3 RECORD)
