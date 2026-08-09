@@ -167,7 +167,24 @@ def ambil_data_metar_web_aviation(tahun, bulan, tanggal, stasiun="WARD"):
         print(" [Info] Tidak ada tbody pada tabel hasil web-aviation.")
         return None
 
-    records = []
+    # records = []
+    # for baris in tbody.find_all('tr'):
+    #     kolom = baris.find_all('td')
+    #     if len(kolom) < 4:
+    #         continue
+
+    #     data_metar = kolom[0].get_text(strip=True)
+    #     waktu_observasi = kolom[3].get_text(strip=True)
+
+        # Hanya proses baris METAR; baris SPECI sengaja dilewati di sini
+        # supaya tidak ikut terhitung sebagai "gagal_parse" oleh parse_metar
+        # (yang memang hanya mengenali baris berisi kata "METAR").
+        # if "METAR" not in data_metar:
+        #     continue
+
+        # records.append([waktu_observasi, data_metar])
+
+    records_dict = {}
     for baris in tbody.find_all('tr'):
         kolom = baris.find_all('td')
         if len(kolom) < 4:
@@ -176,13 +193,16 @@ def ambil_data_metar_web_aviation(tahun, bulan, tanggal, stasiun="WARD"):
         data_metar = kolom[0].get_text(strip=True)
         waktu_observasi = kolom[3].get_text(strip=True)
 
-        # Hanya proses baris METAR; baris SPECI sengaja dilewati di sini
-        # supaya tidak ikut terhitung sebagai "gagal_parse" oleh parse_metar
-        # (yang memang hanya mengenali baris berisi kata "METAR").
         if "METAR" not in data_metar:
             continue
 
-        records.append([waktu_observasi, data_metar])
+        # Jika jam tersebut belum ada, atau data baru ini mengandung kata "COR", 
+        # maka timpa/simpan sebagai data yang diprioritaskan.
+        if waktu_observasi not in records_dict or "COR" in data_metar:
+            records_dict[waktu_observasi] = data_metar
+
+    # Konversi kembali dictionary ke bentuk list records
+    records = [[waktu, metar] for waktu, metar in records_dict.items()]
 
     if not records:
         print(f" [Info] Tidak ditemukan data METAR untuk stasiun {stasiun} "
